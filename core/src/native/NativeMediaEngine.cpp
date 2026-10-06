@@ -1,0 +1,2 @@
+#include "ump/native/NativeMediaEngine.h"
+namespace ump::native { NativeMediaEngine::NativeMediaEngine()=default; NativeMediaEngine::~NativeMediaEngine(){close();} void NativeMediaEngine::close(){session_.close();state_=NativeEngineState::Closed;} bool NativeMediaEngine::isOpen()const noexcept{return session_.isOpen();} bool NativeMediaEngine::standaloneReady()const noexcept{return session_.standaloneReady();} }
