@@ -1,0 +1,11 @@
+# KAVIRO native engine package manifest example.
+engineName=KAVIRO Bundled Native FFmpeg Engine
+version=1.0.0
+buildId=REPLACE_WITH_VERIFIED_BUILD_ID
+license=REPLACE_WITH_VERIFIED_FFMPEG_LICENSE_NOTICE
+upstreamSource=https://ffmpeg.org/
+upstreamChecksum=REPLACE_WITH_VERIFIED_UPSTREAM_CHECKSUM
+platform=windows
+architecture=x64
+binaryChecksum=REPLACE_WITH_SHA256_OF_SHIPPED_BINARY
+standalone=true
