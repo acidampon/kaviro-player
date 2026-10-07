@@ -36,6 +36,7 @@ endforeach()
 
 add_library(kaviro_android SHARED
     native-lib.cpp
+    AndroidOutputs.cpp
     ../../../../../core/src/FfmpegMediaSession.cpp
     ../../../../../core/src/native/NativeMediaEngine.cpp
 )
@@ -52,6 +53,7 @@ target_compile_definitions(kaviro_android PRIVATE
 
 find_library(log-lib log)
 find_library(android-lib android)
+find_library(aaudio-lib aaudio)
 
 target_link_libraries(kaviro_android PRIVATE
     kaviro_ffmpeg_avformat
@@ -60,5 +62,6 @@ target_link_libraries(kaviro_android PRIVATE
     kaviro_ffmpeg_swresample
     kaviro_ffmpeg_avutil
     ${android-lib}
+    ${aaudio-lib}
     ${log-lib}
 )
