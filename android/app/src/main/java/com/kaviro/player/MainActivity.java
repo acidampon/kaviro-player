@@ -46,9 +46,14 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         @Override public void run() {
             if (!playing || nativePlayer == 0) return;
             final boolean ok = nativePump(nativePlayer, 4);
-            if (!ok && "error".equals(nativeState(nativePlayer))) {
+            if (!ok) {
+                final String state = nativeState(nativePlayer);
                 playing = false;
-                runOnUiThread(() -> statusView.setText(nativeLastError(nativePlayer)));
+                if ("error".equals(state)) {
+                    runOnUiThread(() -> statusView.setText("Playback error: " + nativeLastError(nativePlayer)));
+                } else {
+                    runOnUiThread(() -> statusView.setText("Playback finished\nSession: " + state));
+                }
                 return;
             }
             playbackHandler.postDelayed(this, 8);
