@@ -18,16 +18,19 @@ public:
 
     bool write(const ump::FfmpegDecodedFrame& frame) override;
     void reset() override;
+    std::int64_t clockPositionUs() const override;
     void close();
 
 private:
     bool ensureStream(int sampleRate, int channels);
     void closeLocked();
 
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     AAudioStream* stream_{nullptr};
     int sampleRate_{0};
     int channels_{0};
+    std::int64_t mediaBaseUs_{-1};
+    std::int64_t streamBaseFrame_{-1};
 };
 
 class AndroidVideoOutput final : public ump::native::VideoOutput {
