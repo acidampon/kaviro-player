@@ -156,6 +156,23 @@ Java_com_kaviro_player_MainActivity_nativePump(
     return player->engine.pump(static_cast<std::size_t>(maxFrames)) ? JNI_TRUE : JNI_FALSE;
 }
 
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_kaviro_player_MainActivity_nativeSelectAudioTrack(JNIEnv*, jclass, jlong handle, jint streamIndex) {
+    auto* player = fromHandle(handle);
+    if (player == nullptr) return JNI_FALSE;
+    std::lock_guard<std::mutex> lock(player->mutex);
+    return player->engine.selectAudioTrack(static_cast<int>(streamIndex)) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_kaviro_player_MainActivity_nativeSelectVideoTrack(JNIEnv*, jclass, jlong handle, jint streamIndex) {
+    auto* player = fromHandle(handle);
+    if (player == nullptr) return JNI_FALSE;
+    std::lock_guard<std::mutex> lock(player->mutex);
+    return player->engine.selectVideoTrack(static_cast<int>(streamIndex)) ? JNI_TRUE : JNI_FALSE;
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_kaviro_player_MainActivity_nativeState(JNIEnv* env, jclass, jlong handle) {
     auto* player = fromHandle(handle);
