@@ -1,6 +1,7 @@
 package com.kaviro.player;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.media.AudioAttributes;
@@ -64,6 +65,10 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     private static native String nativeState(long handle);
     private static native String nativeLastError(long handle);
     private static native String nativeEngineStatus();
+    private static native String[] nativeAudioTracks(long handle);
+    private static native String[] nativeVideoTracks(long handle);
+    private static native boolean nativeSelectAudioTrack(long handle, int streamIndex);
+    private static native boolean nativeSelectVideoTrack(long handle, int streamIndex);
 
     private final Runnable pumpTask = new Runnable() {
         @Override public void run() {
@@ -158,9 +163,19 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         root.addView(seekBar, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        final Button audio = new Button(this);
+        audio.setText("Audio");
+        audio.setOnClickListener(v -> chooseTrack(true));
+
+        final Button video = new Button(this);
+        video.setText("Video");
+        video.setOnClickListener(v -> chooseTrack(false));
+
         controls.addView(open, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         controls.addView(playPause, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         controls.addView(stop, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        controls.addView(audio, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        controls.addView(video, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         root.addView(controls);
 
         statusView = new TextView(this);
@@ -170,6 +185,40 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
 
         setContentView(root);
         playbackHandler.post(timelineTask);
+    }
+
+
+    private void chooseTrack(boolean audio) {
+        if (nativePlayer == 0) return;
+        final String[] tracks = audio ? nativeAudioTracks(nativePlayer) : nativeVideoTracks(nativePlayer);
+        if (tracks == null || tracks.length == 0) {
+            statusView.setText((audio ? "No audio tracks" : "No video tracks") + "\nSession: " + nativeState(nativePlayer));
+            return;
+        }
+        final String[] labels = new String[tracks.length];
+        final int[] indexes = new int[tracks.length];
+        for (int i = 0; i < tracks.length; ++i) {
+            final String value = tracks[i] == null ? "" : tracks[i];
+            final int tab = value.indexOf('\\t');
+            try {
+                indexes[i] = Integer.parseInt(tab > 0 ? value.substring(0, tab) : value);
+            } catch (NumberFormatException e) {
+                indexes[i] = -1;
+            }
+            labels[i] = tab > 0 ? value.substring(tab + 1) : value;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(audio ? "Audio tracks" : "Video tracks")
+                .setItems(labels, (dialog, which) -> {
+                    final int streamIndex = indexes[which];
+                    final boolean ok = audio
+                            ? nativeSelectAudioTrack(nativePlayer, streamIndex)
+                            : nativeSelectVideoTrack(nativePlayer, streamIndex);
+                    statusView.setText(ok
+                            ? (audio ? "Audio track selected" : "Video track selected") + "\nSession: " + nativeState(nativePlayer)
+                            : "Track selection failed: " + nativeLastError(nativePlayer));
+                })
+                .show();
     }
 
     private void updateTimeline() {
