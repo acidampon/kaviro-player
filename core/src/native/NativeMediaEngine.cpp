@@ -341,6 +341,11 @@ bool NativeMediaEngine::pump(std::size_t maxFrames) {
             return true;
         }
 
+        if (!error_.empty()) {
+            state_ = NativeEngineState::Error;
+            return false;
+        }
+
         const auto sessionError = session_.lastError();
         if (!sessionError.empty()) {
             error_ = sessionError;
