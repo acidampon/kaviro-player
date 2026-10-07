@@ -191,7 +191,8 @@ jobs:
               --disable-debug \
               --disable-static \
               --enable-shared \
-              --disable-network
+              --disable-network \
+              --extra-ldflags="-Wl,-z,max-page-size=16384"
             make -j"$(nproc)"
             make install
             mkdir -p "$HEADER_PREFIX"
