@@ -530,7 +530,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     }
 
     private void showQueue() {
-        JSONArray items = loadItems(QUEUE_KEY);
+        final JSONArray items = loadItems(QUEUE_KEY);
         if (items.length() == 0) {
             new AlertDialog.Builder(this)
                     .setTitle("Queue")
@@ -540,22 +540,119 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                     .show();
             return;
         }
+
         final String[] labels = new String[items.length()];
-        final String[] uris = new String[items.length()];
         for (int i = 0; i < items.length(); ++i) {
-            JSONObject item = items.optJSONObject(i);
-            labels[i] = item == null ? "Unknown media" : (i + 1) + ". " + item.optString("name", "Unknown media");
-            uris[i] = item == null ? null : item.optString("uri", null);
+            final JSONObject item = items.optJSONObject(i);
+            labels[i] = item == null
+                    ? (i + 1) + ". Unknown media"
+                    : (i + 1) + ". " + item.optString("name", "Unknown media");
         }
+
         new AlertDialog.Builder(this)
-                .setTitle("Queue")
+                .setTitle("Queue — tap an item to play")
                 .setItems(labels, (dialog, which) -> {
-                    if (uris[which] != null) playbackHandler.post(() -> openUri(Uri.parse(uris[which])));
+                    final JSONObject selected = items.optJSONObject(which);
+                    if (selected == null) return;
+                    final String uri = selected.optString("uri", null);
+                    if (uri == null || uri.isEmpty()) return;
+                    // The queue contains upcoming media only. Once the user
+                    // explicitly chooses an item, consume it from the queue.
+                    removeQueueItem(uri);
+                    playbackHandler.post(() -> openUri(Uri.parse(uri)));
                 })
-                .setNeutralButton("Add media", (dialog, which) -> chooseQueueMedia())
+                .setNeutralButton("Manage", (dialog, which) -> showQueueManager())
+                .setPositiveButton("Add media", (dialog, which) -> chooseQueueMedia())
                 .setNegativeButton("Close", null)
-                .setOnDismissListener(dialog -> {})
                 .show();
+    }
+
+    private void showQueueManager() {
+        final JSONArray items = loadItems(QUEUE_KEY);
+        if (items.length() == 0) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Manage queue")
+                    .setMessage("Queue is empty.")
+                    .setPositiveButton("Add media", (dialog, which) -> chooseQueueMedia())
+                    .setNegativeButton("Close", null)
+                    .show();
+            return;
+        }
+
+        final String[] labels = new String[items.length()];
+        for (int i = 0; i < items.length(); ++i) {
+            final JSONObject item = items.optJSONObject(i);
+            labels[i] = item == null
+                    ? (i + 1) + ". Unknown media"
+                    : (i + 1) + ". " + item.optString("name", "Unknown media");
+        }
+
+        final String[] actions = {"Play", "Move up", "Move down", "Remove"};
+        new AlertDialog.Builder(this)
+                .setTitle("Manage queue")
+                .setItems(labels, (dialog, which) -> showQueueItemActions(which, actions))
+                .setNeutralButton("Clear queue", (dialog, which) -> clearQueue())
+                .setPositiveButton("Add media", (dialog, which) -> chooseQueueMedia())
+                .setNegativeButton("Close", null)
+                .show();
+    }
+
+    private void showQueueItemActions(final int index, final String[] actions) {
+        final JSONArray items = loadItems(QUEUE_KEY);
+        if (index < 0 || index >= items.length()) return;
+        final JSONObject selected = items.optJSONObject(index);
+        if (selected == null) return;
+
+        final String name = selected.optString("name", "Unknown media");
+        new AlertDialog.Builder(this)
+                .setTitle(name)
+                .setItems(actions, (dialog, which) -> {
+                    if (which == 0) {
+                        final String uri = selected.optString("uri", null);
+                        if (uri != null && !uri.isEmpty()) {
+                            removeQueueItem(uri);
+                            playbackHandler.post(() -> openUri(Uri.parse(uri)));
+                        }
+                    } else if (which == 1) {
+                        moveQueueItem(index, -1);
+                    } else if (which == 2) {
+                        moveQueueItem(index, 1);
+                    } else {
+                        removeQueueItemAt(index);
+                    }
+                })
+                .show();
+    }
+
+    private void moveQueueItem(int index, int delta) {
+        JSONArray items = loadItems(QUEUE_KEY);
+        final int target = index + delta;
+        if (index < 0 || index >= items.length() || target < 0 || target >= items.length()) {
+            showQueueManager();
+            return;
+        }
+        final Object current = items.opt(index);
+        final Object swapped = items.opt(target);
+        items.put(index, swapped);
+        items.put(target, current);
+        saveItems(QUEUE_KEY, items);
+        showQueueManager();
+    }
+
+    private void removeQueueItemAt(int index) {
+        JSONArray items = loadItems(QUEUE_KEY);
+        if (index < 0 || index >= items.length()) return;
+        JSONArray next = new JSONArray();
+        for (int i = 0; i < items.length(); ++i) {
+            if (i != index) next.put(items.opt(i));
+        }
+        saveItems(QUEUE_KEY, next);
+        showQueueManager();
+    }
+
+    private void clearQueue() {
+        saveItems(QUEUE_KEY, new JSONArray());
+        statusView.setText("Queue cleared");
     }
 
     private void chooseQueueMedia() {
