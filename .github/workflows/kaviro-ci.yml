@@ -167,6 +167,7 @@ jobs:
               x86_64) TARGET=x86_64-linux-android; ARCH=x86_64 ;;
             esac
             PREFIX="$GITHUB_WORKSPACE/android/app/src/main/jniLibs/$ABI"
+            HEADER_PREFIX="$GITHUB_WORKSPACE/android/app/src/main/ffmpeg/include"
             BUILD="$GITHUB_WORKSPACE/build/ffmpeg-android-$ABI"
             rm -rf "$BUILD" "$PREFIX"
             mkdir -p "$BUILD" "$PREFIX"
@@ -187,7 +188,13 @@ jobs:
               --disable-network
             make -j"$(nproc)"
             make install
-            cp "$BUILD/prefix/lib"/libav{util,codec,format,swresample,swscale}.so* "$PREFIX/"
+            mkdir -p "$HEADER_PREFIX"
+            cp -R "$BUILD/prefix/include/." "$HEADER_PREFIX/"
+            cp -L "$(readlink -f "$BUILD/prefix/lib/libavutil.so.61")" "$PREFIX/libavutil.so.61"
+            cp -L "$(readlink -f "$BUILD/prefix/lib/libavcodec.so.63")" "$PREFIX/libavcodec.so.63"
+            cp -L "$(readlink -f "$BUILD/prefix/lib/libavformat.so.63")" "$PREFIX/libavformat.so.63"
+            cp -L "$(readlink -f "$BUILD/prefix/lib/libswresample.so.7")" "$PREFIX/libswresample.so.7"
+            cp -L "$(readlink -f "$BUILD/prefix/lib/libswscale.so.10")" "$PREFIX/libswscale.so.10"
           done
 
       - name: Assemble debug APK
