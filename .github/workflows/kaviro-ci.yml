@@ -97,7 +97,9 @@ jobs:
         run: |
           SDKMANAGER="$(find "${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}" -type f -name sdkmanager -print -quit)"
           test -n "$SDKMANAGER"
+          set +o pipefail
           yes | "$SDKMANAGER" --licenses >/dev/null
+          set -o pipefail
           "$SDKMANAGER" "platform-tools" "platforms;android-37" "build-tools;36.0.0" "cmake;3.31.6" "ndk;28.2.13676358"
       - name: Set up Java
         uses: actions/setup-java@v4
