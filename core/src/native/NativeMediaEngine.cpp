@@ -449,6 +449,12 @@ bool NativeMediaEngine::pump(std::size_t maxFrames) {
             return false;
         }
 
+        if (session_.ended()) {
+            state_ = NativeEngineState::Ended;
+            clock_.paused = true;
+            return false;
+        }
+
         state_ = NativeEngineState::Paused;
         clock_.paused = true;
         return false;
