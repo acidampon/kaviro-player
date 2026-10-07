@@ -8,7 +8,7 @@
 
 namespace ump::native {
 enum class HardwareDecodeMode { Disabled, Preferred, Required };
-enum class NativeEngineState { Closed, Open, Playing, Paused, Error };
+enum class NativeEngineState { Closed, Open, Playing, Paused, Ended, Error };
 
 struct NativeTrack {
     int streamIndex{-1};
