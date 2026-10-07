@@ -14,7 +14,7 @@ class FfmpegFrameSink { public: virtual ~FfmpegFrameSink()=default; virtual bool
 struct FfmpegOpenOptions { bool hardwareDecodePreferred{true}; bool recoveryMode{false}; std::int64_t maxFrameBytes{256LL*1024*1024}; };
 class FfmpegMediaSession {
 public:
- FfmpegMediaSession(); ~FfmpegMediaSession(); FfmpegMediaSession(const FfmpegMediaSession&)=delete; FfmpegMediaSession& operator=(const FfmpegMediaSession&)=delete; FfmpegMediaSession(FfmpegMediaSession&&) noexcept; FfmpegMediaSession& operator=(FfmpegMediaSession&&) noexcept;
+ FfmpegMediaSession(); ~FfmpegMediaSession(); FfmpegMediaSession(const FfmpegMediaSession&)=delete; FfmpegMediaSession& operator=(const FfmpegMediaSession&)=delete; FfmpegMediaSession(FfmpegMediaSession&&); FfmpegMediaSession& operator=(FfmpegMediaSession&&);
  bool open(const std::filesystem::path& path, const FfmpegOpenOptions& options = {}); void close(); bool isOpen()const; std::string lastError()const;
  const std::vector<FfmpegStreamInfo>& streams()const; bool selectAudioTrack(int); bool selectVideoTrack(int); bool seekMs(std::int64_t);
  bool decodeToSink(FfmpegFrameSink&,std::size_t maxFrames=0); bool ended() const noexcept; FfmpegRecoveryOutcome recoveryOutcome()const; bool standaloneReady()const;
