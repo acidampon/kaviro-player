@@ -258,7 +258,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
 
         final String nextUri = next.optString("uri", null);
         if (nextUri == null || nextUri.isEmpty()) {
-            removeQueueItem(next.optString("uri", null));
+            dropFirstQueueItem();
             advanceQueueAfterEnd();
             return;
         }
@@ -474,6 +474,15 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         } catch (Exception ignored) {
             return false;
         }
+    }
+
+    private void dropFirstQueueItem() {
+        final JSONArray items = loadItems(QUEUE_KEY);
+        final JSONArray next = new JSONArray();
+        for (int i = 1; i < items.length(); ++i) {
+            next.put(items.opt(i));
+        }
+        saveItems(QUEUE_KEY, next);
     }
 
     private void removeQueueItem(String uri) {
