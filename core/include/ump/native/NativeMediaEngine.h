@@ -42,6 +42,8 @@ public:
     bool play();
     bool pause();
     bool seekMs(std::int64_t);
+    std::int64_t positionMs() const noexcept;
+    std::int64_t durationMs() const noexcept;
     bool setSpeed(double);
     double speed() const noexcept;
     bool selectAudioTrack(int);
