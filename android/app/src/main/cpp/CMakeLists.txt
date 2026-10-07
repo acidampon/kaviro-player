@@ -16,16 +16,17 @@ if(NOT EXISTS "${KAVIRO_FFMPEG_INCLUDE}/libavformat/avformat.h")
 endif()
 
 set(KAVIRO_FFMPEG_LIB_FILES
-    "avutil;libavutil.so.61"
-    "swresample;libswresample.so.7"
-    "swscale;libswscale.so.10"
-    "avcodec;libavcodec.so.63"
-    "avformat;libavformat.so.63"
+    "avutil|libavutil.so.61"
+    "swresample|libswresample.so.7"
+    "swscale|libswscale.so.10"
+    "avcodec|libavcodec.so.63"
+    "avformat|libavformat.so.63"
 )
 
 foreach(entry IN LISTS KAVIRO_FFMPEG_LIB_FILES)
-    list(GET entry 0 lib)
-    list(GET entry 1 filename)
+    string(REPLACE "|" ";" pair "${entry}")
+    list(GET pair 0 lib)
+    list(GET pair 1 filename)
     add_library(kaviro_ffmpeg_${lib} SHARED IMPORTED)
     set_target_properties(kaviro_ffmpeg_${lib} PROPERTIES
         IMPORTED_LOCATION "${KAVIRO_FFMPEG_ROOT}/${filename}"
