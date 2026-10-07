@@ -2,6 +2,142 @@
 
 #include <jni.h>
 
+#include <cstdint>
+#include <filesystem>
+#include <memory>
+#include <mutex>
+#include <string>
+
+namespace {
+
+struct AndroidPlayer {
+    std::mutex mutex;
+    ump::native::NativeMediaEngine engine;
+};
+
+AndroidPlayer* fromHandle(jlong handle) {
+    return reinterpret_cast<AndroidPlayer*>(static_cast<std::uintptr_t>(handle));
+}
+
+jstring makeString(JNIEnv* env, const std::string& value) {
+    return env->NewStringUTF(value.c_str());
+}
+
+} // namespace
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_kaviro_player_MainActivity_nativeCreate(JNIEnv*, jclass) {
+    auto* player = new AndroidPlayer();
+    return static_cast<jlong>(reinterpret_cast<std::uintptr_t>(player));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_kaviro_player_MainActivity_nativeRelease(JNIEnv*, jclass, jlong handle) {
+    auto* player = fromHandle(handle);
+    if (player == nullptr) {
+        return;
+    }
+    delete player;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_kaviro_player_MainActivity_nativeOpen(
+    JNIEnv* env, jclass, jlong handle, jstring path) {
+    auto* player = fromHandle(handle);
+    if (player == nullptr || path == nullptr) {
+        return JNI_FALSE;
+    }
+
+    const char* rawPath = env->GetStringUTFChars(path, nullptr);
+    if (rawPath == nullptr) {
+        return JNI_FALSE;
+    }
+
+    std::lock_guard<std::mutex> lock(player->mutex);
+    const bool opened = player->engine.open(std::filesystem::path(rawPath), true);
+    env->ReleaseStringUTFChars(path, rawPath);
+    return opened ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_kaviro_player_MainActivity_nativePlay(
+    JNIEnv*, jclass, jlong handle) {
+    auto* player = fromHandle(handle);
+    if (player == nullptr) {
+        return JNI_FALSE;
+    }
+    std::lock_guard<std::mutex> lock(player->mutex);
+    return player->engine.play() ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_kaviro_player_MainActivity_nativePause(
+    JNIEnv*, jclass, jlong handle) {
+    auto* player = fromHandle(handle);
+    if (player == nullptr) {
+        return JNI_FALSE;
+    }
+    std::lock_guard<std::mutex> lock(player->mutex);
+    return player->engine.pause() ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_kaviro_player_MainActivity_nativeSeekMs(
+    JNIEnv*, jclass, jlong handle, jlong positionMs) {
+    auto* player = fromHandle(handle);
+    if (player == nullptr) {
+        return JNI_FALSE;
+    }
+    std::lock_guard<std::mutex> lock(player->mutex);
+    return player->engine.seekMs(static_cast<std::int64_t>(positionMs))
+        ? JNI_TRUE
+        : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_kaviro_player_MainActivity_nativePump(
+    JNIEnv*, jclass, jlong handle, jint maxFrames) {
+    auto* player = fromHandle(handle);
+    if (player == nullptr || maxFrames < 0) {
+        return JNI_FALSE;
+    }
+    std::lock_guard<std::mutex> lock(player->mutex);
+    return player->engine.pump(static_cast<std::size_t>(maxFrames))
+        ? JNI_TRUE
+        : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_kaviro_player_MainActivity_nativeState(
+    JNIEnv* env, jclass, jlong handle) {
+    auto* player = fromHandle(handle);
+    if (player == nullptr) {
+        return makeString(env, "closed");
+    }
+
+    std::lock_guard<std::mutex> lock(player->mutex);
+    switch (player->engine.state()) {
+        case ump::native::NativeEngineState::Open: return makeString(env, "open");
+        case ump::native::NativeEngineState::Playing: return makeString(env, "playing");
+        case ump::native::NativeEngineState::Paused: return makeString(env, "paused");
+        case ump::native::NativeEngineState::Error: return makeString(env, "error");
+        case ump::native::NativeEngineState::Closed: return makeString(env, "closed");
+    }
+    return makeString(env, "unknown");
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_kaviro_player_MainActivity_nativeLastError(
+    JNIEnv* env, jclass, jlong handle) {
+    auto* player = fromHandle(handle);
+    if (player == nullptr) {
+        return makeString(env, "player handle is invalid");
+    }
+
+    std::lock_guard<std::mutex> lock(player->mutex);
+    return makeString(env, player->engine.lastError());
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_kaviro_player_MainActivity_nativeEngineStatus(JNIEnv* env, jclass) {
     ump::native::NativeMediaEngine engine;
