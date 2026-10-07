@@ -3,7 +3,22 @@
 #include <array>
 #include <cstdlib>
 #include <sstream>
-namespace{std::string q(const std::string&s){std::string r="'";for(char c:s)r+=c=='\''?"'\\''":std::string(1,c);return r+"'";}bool ex(sqlite3*d,const char*s){return sqlite3_exec(d,s,nullptr,nullptr,nullptr)==SQLITE_OK;}}
+#ifdef _WIN32
+#define KAVIRO_POPEN _popen
+#define KAVIRO_PCLOSE _pclose
+#else
+#define KAVIRO_POPEN popen
+#define KAVIRO_PCLOSE pclose
+#endif
+namespace{std::string q(const std::string&s){
+#ifdef _WIN32
+std::string r="\"";
+for(char c:s){if(c=='\"')r+="\\\"";else r+=c;}
+return r+"\"";
+#else
+std::string r="'";for(char c:s)r+=c=='\\''?"'\\\\''":std::string(1,c);return r+"'";
+#endif
+}}bool ex(sqlite3*d,const char*s){return sqlite3_exec(d,s,nullptr,nullptr,nullptr)==SQLITE_OK;}}
 namespace ump{
 std::string mediaTypeName(MediaType t){return t==MediaType::Video?"video":t==MediaType::Audio?"audio":"unknown";}std::string titleFromPath(const std::filesystem::path&p){return p.stem().string();}std::string stableMediaId(const std::filesystem::path&p){std::error_code e;auto c=std::filesystem::weakly_canonical(p,e);return std::to_string(std::hash<std::string>{}((e?p.lexically_normal():c).generic_string()));}
 MediaProbeResult MediaProbe::inspect(const std::string&p){MediaProbeResult r;std::string cmd="ffprobe -v error -show_entries format=format_name,duration,bit_rate:stream=codec_type,codec_name,width,height -of default=noprint_wrappers=1:nokey=0 -- "+q(p)+" 2>&1";FILE*f=KAVIRO_POPEN(cmd.c_str(),"r");if(!f){r.error="ffprobe unavailable";return r;}std::array<char,4096>b{};std::string o;while(fgets(b.data(),b.size(),f))o+=b.data();int rc=KAVIRO_PCLOSE(f);if(rc){r.error=o.empty()?"ffprobe failed":o;return r;}std::istringstream in(o);std::string l,c;bool v=false,a=false;while(std::getline(in,l)){auto n=l.find('=');if(n<1)continue;auto k=l.substr(0,n),x=l.substr(n+1);if(k=="format_name")r.format=x;else if(k=="duration")r.durationMs=std::max<std::int64_t>(0,(std::int64_t)(std::atof(x.c_str())*1000));else if(k=="bit_rate")r.bitrate=std::max<std::int64_t>(0,std::atoll(x.c_str()));else if(k=="codec_type"){v|=x=="video";a|=x=="audio";}else if(k=="codec_name"&&c.empty())c=x;else if(k=="width")r.width=std::max(0,std::atoi(x.c_str()));else if(k=="height")r.height=std::max(0,std::atoi(x.c_str()));}r.codec=c;r.type=v?MediaType::Video:a?MediaType::Audio:MediaType::Unknown;r.success=r.type!=MediaType::Unknown;if(!r.success)r.error="No audio/video stream detected";return r;}
