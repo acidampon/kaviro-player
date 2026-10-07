@@ -118,11 +118,10 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                     updateTimeline();
                     return;
                 }
-                final long target = Math.min(duration, Integer.MAX_VALUE) == 0
-                        ? 0
-                        : Math.min(duration, Integer.MAX_VALUE) == bar.getMax()
-                            ? bar.getProgress()
-                            : (duration * bar.getProgress()) / bar.getMax();
+                final int maxProgress = Math.max(1, bar.getMax());
+                final long target = duration <= Integer.MAX_VALUE
+                        ? bar.getProgress()
+                        : (long) ((double) duration * bar.getProgress() / maxProgress);
                 final long clamped = Math.max(0, Math.min(duration, target));
                 final boolean ok = nativeSeekMs(nativePlayer, clamped);
                 if (!ok) {
