@@ -44,6 +44,48 @@ bool AndroidAudioOutput::ensureStream(int sampleRate, int channels) {
     return true;
 }
 
+bool AndroidAudioOutput::appendPendingLocked(const std::uint8_t* data, std::size_t bytes,
+                                               int sampleRate, int channels,
+                                               std::int64_t ptsUs) {
+    if (data == nullptr || bytes == 0 || sampleRate <= 0 || channels <= 0) return false;
+    if (pendingAudio_.size() - pendingOffset_ + bytes > kMaxPendingAudioBytes) return false;
+    if (pendingOffset_ > 0) {
+        pendingAudio_.erase(pendingAudio_.begin(),
+                            pendingAudio_.begin() + static_cast<std::ptrdiff_t>(pendingOffset_));
+        pendingOffset_ = 0;
+    }
+    if (pendingAudio_.empty()) pendingPtsUs_ = ptsUs;
+    pendingAudio_.insert(pendingAudio_.end(), data, data + bytes);
+    return true;
+}
+
+bool AndroidAudioOutput::flushPendingLocked() {
+    if (stream_ == nullptr || sampleRate_ <= 0 || channels_ <= 0) return false;
+    const std::size_t bytesPerFrame =
+        static_cast<std::size_t>(channels_) * sizeof(std::int16_t);
+
+    while (pendingAudio_.size() > pendingOffset_ + bytesPerFrame) {
+        const std::size_t remainingBytes = pendingAudio_.size() - pendingOffset_;
+        const int32_t availableFrames =
+            static_cast<int32_t>(remainingBytes / bytesPerFrame);
+        const auto written = AAudioStream_write(
+            stream_,
+            pendingAudio_.data() + pendingOffset_,
+            availableFrames,
+            0);
+        if (written == AAUDIO_ERROR_WOULD_BLOCK || written == 0) return true;
+        if (written < 0) return false;
+        pendingOffset_ += static_cast<std::size_t>(written) * bytesPerFrame;
+        if (pendingOffset_ >= pendingAudio_.size()) {
+            pendingAudio_.clear();
+            pendingOffset_ = 0;
+            pendingPtsUs_ = -1;
+            break;
+        }
+    }
+    return true;
+}
+
 bool AndroidAudioOutput::write(const ump::FfmpegDecodedFrame& frame) {
     if (frame.type != ump::FfmpegStreamType::Audio ||
         !frame.normalized || frame.samples <= 0 || frame.channels <= 0 ||
@@ -54,27 +96,14 @@ bool AndroidAudioOutput::write(const ump::FfmpegDecodedFrame& frame) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!ensureStream(frame.sampleRate, frame.channels)) return false;
 
-    const int32_t frames = static_cast<int32_t>(frame.samples);
-    const auto* data = frame.ownedData.data();
-    std::size_t remaining = frame.ownedData.size();
-    int32_t offsetFrames = 0;
-    const std::size_t bytesPerFrame = static_cast<std::size_t>(frame.channels) * sizeof(std::int16_t);
+    if (!flushPendingLocked()) return false;
 
-    while (remaining >= bytesPerFrame) {
-        const int32_t availableFrames = static_cast<int32_t>(remaining / bytesPerFrame);
-        const aaudio_result_t written = AAudioStream_write(
-            stream_,
-            data + static_cast<std::size_t>(offsetFrames) * bytesPerFrame,
-            std::min(frames - offsetFrames, availableFrames),
-            20000);
-        if (written < 0) return false;
-        if (written == 0) return false;
-        offsetFrames += static_cast<int32_t>(written);
-        remaining -= static_cast<std::size_t>(written) * bytesPerFrame;
-        if (offsetFrames >= frames) break;
+    if (!appendPendingLocked(frame.ownedData.data(), frame.ownedData.size(),
+                             frame.sampleRate, frame.channels, frame.ptsUs)) {
+        return false;
     }
 
-    if (offsetFrames != frames) return false;
+    if (!flushPendingLocked()) return false;
 
     if (mediaBaseUs_ < 0) {
         std::int64_t framePosition = 0;
@@ -83,7 +112,7 @@ bool AndroidAudioOutput::write(const ump::FfmpegDecodedFrame& frame) {
             stream_, CLOCK_MONOTONIC, &framePosition, &timeNanos);
         if (timestampResult == AAUDIO_OK && framePosition >= 0) {
             const auto frameDurationUs =
-                static_cast<long double>(frames) * 1'000'000.0L /
+                static_cast<long double>(frame.samples) * 1'000'000.0L /
                 static_cast<long double>(frame.sampleRate);
             const auto positionUs =
                 static_cast<long double>(framePosition) * 1'000'000.0L /
@@ -110,6 +139,9 @@ void AndroidAudioOutput::closeLocked() {
     channels_ = 0;
     mediaBaseUs_ = -1;
     streamBaseFrame_ = -1;
+    pendingAudio_.clear();
+    pendingOffset_ = 0;
+    pendingPtsUs_ = -1;
 }
 
 void AndroidAudioOutput::reset() { close(); }
