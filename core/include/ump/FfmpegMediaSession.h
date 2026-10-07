@@ -17,7 +17,7 @@ public:
  FfmpegMediaSession(); ~FfmpegMediaSession(); FfmpegMediaSession(const FfmpegMediaSession&)=delete; FfmpegMediaSession& operator=(const FfmpegMediaSession&)=delete;
  bool open(const std::filesystem::path& path, const FfmpegOpenOptions& options = {}); void close(); bool isOpen()const; std::string lastError()const;
  const std::vector<FfmpegStreamInfo>& streams()const; bool selectAudioTrack(int); bool selectVideoTrack(int); bool seekMs(std::int64_t);
- bool decodeToSink(FfmpegFrameSink&,std::size_t maxFrames=0); FfmpegRecoveryOutcome recoveryOutcome()const; bool standaloneReady()const;
+ bool decodeToSink(FfmpegFrameSink&,std::size_t maxFrames=0); bool ended() const noexcept; FfmpegRecoveryOutcome recoveryOutcome()const; bool standaloneReady()const;
  static constexpr std::int64_t kDefaultMaxFrameBytes=256LL*1024*1024;
 private: struct Impl; Impl* impl_{}; std::vector<FfmpegStreamInfo> streams_; std::string error_; FfmpegRecoveryOutcome recovery_{FfmpegRecoveryOutcome::NotAttempted}; bool open_{false};
 };
