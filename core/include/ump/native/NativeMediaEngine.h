@@ -24,7 +24,11 @@ struct NativeEngineInfo {
 };
 
 class VideoOutput { public: virtual ~VideoOutput() = default; virtual bool present(const FfmpegDecodedFrame&) = 0; virtual void reset() {} };
-class AudioOutput { public: virtual ~AudioOutput() = default; virtual bool write(const FfmpegDecodedFrame&) = 0; virtual void reset() {} };
+class AudioOutput { public: virtual ~AudioOutput() = default; virtual bool write(const FfmpegDecodedFrame&) = 0; virtual void reset() {};
+    // Returns the media position currently represented by the audio device clock,
+    // or a negative value when the output cannot provide one.
+    virtual std::int64_t clockPositionUs() const { return -1; }
+};
 
 class NativeMediaEngine final {
 public:
