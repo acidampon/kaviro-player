@@ -136,6 +136,31 @@ bool NativeMediaEngine::pause() {
     return true;
 }
 
+bool NativeMediaEngine::stop() {
+    if (!session_.isOpen()) {
+        error_ = "Media session is not open";
+        state_ = NativeEngineState::Closed;
+        return false;
+    }
+    if (!session_.seekMs(0)) {
+        error_ = session_.lastError();
+        state_ = NativeEngineState::Error;
+        return false;
+    }
+    if (videoOutput_ != nullptr) videoOutput_->reset();
+    if (audioOutput_ != nullptr) audioOutput_->reset();
+    pendingVideo_ = false;
+    pendingVideoFrame_ = {};
+    clock_ = {};
+    clock_.speed = speed_;
+    clock_.paused = true;
+    clockInitialized_ = true;
+    clockWall_ = std::chrono::steady_clock::now();
+    error_.clear();
+    state_ = NativeEngineState::Paused;
+    return true;
+}
+
 bool NativeMediaEngine::seekMs(std::int64_t positionMs) {
     if (!session_.isOpen() || positionMs < 0) {
         error_ = "Invalid seek request";
@@ -197,6 +222,25 @@ bool NativeMediaEngine::setSpeed(double speedValue) {
 double NativeMediaEngine::speed() const noexcept {
     return speed_;
 }
+
+std::int64_t NativeMediaEngine::positionMs() const noexcept {
+    if (!session_.isOpen()) return 0;
+    const auto mediaUs = std::max<std::int64_t>(0, clock_.mediaUs);
+    return mediaUs / 1000;
+}
+
+std::int64_t NativeMediaEngine::durationMs() const noexcept {
+    if (!session_.isOpen()) return 0;
+    std::int64_t duration = 0;
+    for (const auto& stream : session_.streams()) {
+        if (stream.type == FfmpegStreamType::Audio ||
+            stream.type == FfmpegStreamType::Video) {
+            duration = std::max(duration, stream.durationMs);
+        }
+    }
+    return std::max<std::int64_t>(0, duration);
+}
+
 
 bool NativeMediaEngine::selectAudioTrack(int streamIndex) {
     if (!session_.selectAudioTrack(streamIndex)) {
