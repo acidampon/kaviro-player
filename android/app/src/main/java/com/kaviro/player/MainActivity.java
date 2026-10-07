@@ -1,7 +1,11 @@
 package com.kaviro.player;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
+import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
+import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -32,6 +36,11 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     private boolean playing;
     private SeekBar seekBar;
     private boolean userSeeking;
+    private AudioManager audioManager;
+    private AudioFocusRequest audioFocusRequest;
+    private boolean hasAudioFocus;
+    private boolean resumeAfterFocusLoss;
+    private boolean resumeAfterLifecycle;
     private final Runnable timelineTask = new Runnable() {
         @Override public void run() {
             if (nativePlayer == 0) return;
@@ -79,6 +88,14 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         super.onCreate(savedInstanceState);
 
         nativePlayer = nativeCreate();
+        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        audioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
+                        .build())
+                .setOnAudioFocusChangeListener(this::onAudioFocusChange)
+                .build();
         playbackThread = new HandlerThread("KAVIRO-playback");
         playbackThread.start();
         playbackHandler = new Handler(playbackThread.getLooper());
@@ -204,6 +221,9 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     }
 
     private void openUri(Uri uri) {
+        playing = false;
+        playbackHandler.removeCallbacks(pumpTask);
+        abandonAudioFocus();
         try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(uri, "r")) {
             if (pfd != null && pfd.getFd() >= 0) {
                 final boolean opened = nativeOpenFd(nativePlayer, pfd.getFd());
@@ -243,11 +263,58 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         return target;
     }
 
+    private boolean requestAudioFocus() {
+        if (audioManager == null || audioFocusRequest == null) return true;
+        final int result = audioManager.requestAudioFocus(audioFocusRequest);
+        hasAudioFocus = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+        return hasAudioFocus;
+    }
+
+    private void abandonAudioFocus() {
+        if (audioManager != null && audioFocusRequest != null && hasAudioFocus) {
+            audioManager.abandonAudioFocusRequest(audioFocusRequest);
+        }
+        hasAudioFocus = false;
+    }
+
+    private void onAudioFocusChange(int focusChange) {
+        if (focusChange == AudioManager.AUDIOFOCUS_GAIN) {
+            hasAudioFocus = true;
+            if (resumeAfterFocusLoss && nativePlayer != 0 && !playing) {
+                resumeAfterFocusLoss = false;
+                if (nativePlay(nativePlayer)) {
+                    playing = true;
+                    playbackHandler.post(pumpTask);
+                    statusView.setText("Playback resumed\nSession: " + nativeState(nativePlayer));
+                }
+            }
+            return;
+        }
+
+        if (focusChange == AudioManager.AUDIOFOCUS_LOSS ||
+                focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT ||
+                focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) {
+            if (playing) {
+                resumeAfterFocusLoss = true;
+                playing = false;
+                playbackHandler.removeCallbacks(pumpTask);
+                if (nativePlayer != 0) nativePause(nativePlayer);
+            }
+            hasAudioFocus = false;
+            if (focusChange != AudioManager.AUDIOFOCUS_LOSS) {
+                statusView.setText("Paused for audio focus\nSession: " + nativeState(nativePlayer));
+            }
+        }
+    }
+
     private void stopPlayback() {
         if (nativePlayer == 0) return;
         playing = false;
         playbackHandler.removeCallbacks(pumpTask);
+        resumeAfterFocusLoss = false;
+        resumeAfterLifecycle = false;
         final boolean ok = nativeStop(nativePlayer);
+        abandonAudioFocus();
         statusView.setText(ok
                 ? "Stopped\nPosition: 0:00\nSession: " + nativeState(nativePlayer)
                 : "Stop failed: " + nativeLastError(nativePlayer));
@@ -261,12 +328,45 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             playbackHandler.removeCallbacks(pumpTask);
             nativePause(nativePlayer);
         } else {
+            if (!requestAudioFocus()) {
+                statusView.setText("Playback blocked: audio focus unavailable");
+                return;
+            }
+            resumeAfterFocusLoss = false;
+            resumeAfterLifecycle = false;
             if (nativePlay(nativePlayer)) {
                 playing = true;
                 playbackHandler.post(pumpTask);
             }
         }
         statusView.setText("Session: " + nativeState(nativePlayer));
+    }
+
+    @Override
+    protected void onPause() {
+        if (playing) {
+            resumeAfterLifecycle = true;
+            playing = false;
+            playbackHandler.removeCallbacks(pumpTask);
+            if (nativePlayer != 0) nativePause(nativePlayer);
+        }
+        abandonAudioFocus();
+        super.onPause();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (resumeAfterLifecycle && nativePlayer != 0) {
+            resumeAfterLifecycle = false;
+            if (requestAudioFocus() && nativePlay(nativePlayer)) {
+                playing = true;
+                playbackHandler.post(pumpTask);
+                statusView.setText("Playback resumed\nSession: " + nativeState(nativePlayer));
+            } else {
+                statusView.setText("Resume failed: " + nativeLastError(nativePlayer));
+            }
+        }
     }
 
     @Override
@@ -287,6 +387,9 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     @Override
     protected void onDestroy() {
         playing = false;
+        resumeAfterFocusLoss = false;
+        resumeAfterLifecycle = false;
+        abandonAudioFocus();
         if (playbackHandler != null) playbackHandler.removeCallbacksAndMessages(null);
         if (playbackThread != null) {
             playbackThread.quitSafely();
