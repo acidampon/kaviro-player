@@ -58,6 +58,7 @@ public:
     void attachAudioOutput(AudioOutput*) noexcept;
     void detachAudioOutput(AudioOutput*) noexcept;
     bool pump(std::size_t maxFrames=0);
+    bool ended() const noexcept;
     FfmpegRecoveryOutcome recoveryOutcome() const noexcept;
     NativeEngineState state() const noexcept;
     std::string lastError() const;
