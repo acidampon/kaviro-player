@@ -44,7 +44,7 @@ if(UMP_BUILD_TESTS)
   add_executable(kaviro_native_engine_contract_tests tests/native_engine_contract_tests.cpp)
   target_link_libraries(kaviro_native_engine_contract_tests PRIVATE ump_core)
   add_test(NAME kaviro_native_engine_contract_tests COMMAND kaviro_native_engine_contract_tests)
-
+\n  add_executable(kaviro_playback_clock_tests tests/playback_clock_tests.cpp)\n  target_link_libraries(kaviro_playback_clock_tests PRIVATE ump_core)\n  add_test(NAME kaviro_playback_clock_tests COMMAND kaviro_playback_clock_tests)\n
   if(KAVIRO_FFMPEG_NATIVE)
     add_executable(kaviro_native_decode_smoke tests/native_decode_smoke.cpp)
     target_link_libraries(kaviro_native_decode_smoke PRIVATE ump_core)
