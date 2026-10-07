@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <utility>
 
@@ -9,27 +10,31 @@ namespace ump::native {
 
 namespace {
 
+constexpr std::int64_t kVideoEarlyToleranceUs = 20'000;
+constexpr std::int64_t kVideoLateToleranceUs = 250'000;
+
 class OutputSink final : public FfmpegFrameSink {
 public:
-    OutputSink(VideoOutput* video, AudioOutput* audio)
-        : video_(video), audio_(audio) {}
+    using VideoHandler = std::function<bool(const FfmpegDecodedFrame&)>;
+
+    OutputSink(VideoOutput* video, AudioOutput* audio, VideoHandler handler)
+        : video_(video), audio_(audio), videoHandler_(std::move(handler)) {}
 
     bool onFrame(const FfmpegDecodedFrame& frame) override {
         if (frame.type == FfmpegStreamType::Video) {
-            return video_ == nullptr || video_->present(frame);
+            if (video_ == nullptr) return true;
+            return videoHandler_ ? videoHandler_(frame) : video_->present(frame);
         }
         if (frame.type == FfmpegStreamType::Audio) {
             return audio_ == nullptr || audio_->write(frame);
         }
-        // Subtitle output is deliberately not consumed by the audio/video
-        // output boundary yet. The demux/decode layer remains responsible for
-        // exposing subtitle streams without silently dropping the contract.
         return true;
     }
 
 private:
     VideoOutput* video_;
     AudioOutput* audio_;
+    VideoHandler videoHandler_;
 };
 
 } // namespace
@@ -56,6 +61,13 @@ bool NativeMediaEngine::open(const std::filesystem::path& path, bool recoveryMod
     }
 
     state_ = NativeEngineState::Open;
+    clock_ = {};
+    clock_.speed = speed_;
+    clock_.paused = true;
+    clockWall_ = {};
+    clockInitialized_ = false;
+    pendingVideo_ = false;
+    pendingVideoFrame_ = {};
     return true;
 }
 
@@ -63,6 +75,11 @@ void NativeMediaEngine::close() {
     session_.close();
     error_.clear();
     state_ = NativeEngineState::Closed;
+    clock_ = {};
+    clockWall_ = {};
+    clockInitialized_ = false;
+    pendingVideo_ = false;
+    pendingVideoFrame_ = {};
 }
 
 bool NativeMediaEngine::isOpen() const noexcept {
@@ -78,6 +95,17 @@ bool NativeMediaEngine::play() {
     if (state_ == NativeEngineState::Error) {
         return false;
     }
+
+    const auto now = std::chrono::steady_clock::now();
+    if (!clockInitialized_) {
+        clock_.mediaUs = 0;
+        clock_.wallUs = 0;
+        clock_.speed = speed_;
+        clockInitialized_ = true;
+    }
+    clock_.speed = speed_;
+    clock_.paused = false;
+    clockWall_ = now;
     state_ = NativeEngineState::Playing;
     return true;
 }
@@ -88,6 +116,16 @@ bool NativeMediaEngine::pause() {
         state_ = NativeEngineState::Error;
         return false;
     }
+
+    if (state_ == NativeEngineState::Playing && clockInitialized_) {
+        const auto now = std::chrono::steady_clock::now();
+        const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+            now - clockWall_).count();
+        if (elapsed > 0) {
+            clock_ = advancePlaybackClock(clock_, elapsed);
+        }
+    }
+    clock_.paused = true;
     state_ = NativeEngineState::Paused;
     return true;
 }
@@ -107,6 +145,16 @@ bool NativeMediaEngine::seekMs(std::int64_t positionMs) {
     }
 
     error_.clear();
+    pendingVideo_ = false;
+    pendingVideoFrame_ = {};
+    clock_.mediaUs = positionMs > std::numeric_limits<std::int64_t>::max() / 1000
+        ? std::numeric_limits<std::int64_t>::max()
+        : positionMs * 1000;
+    clock_.wallUs = 0;
+    clock_.speed = speed_;
+    clock_.paused = state_ != NativeEngineState::Playing;
+    clockWall_ = std::chrono::steady_clock::now();
+    clockInitialized_ = true;
     if (state_ == NativeEngineState::Error) {
         state_ = NativeEngineState::Paused;
     }
@@ -121,7 +169,20 @@ bool NativeMediaEngine::setSpeed(double speedValue) {
                                    : NativeEngineState::Closed;
         return false;
     }
+
+    if (state_ == NativeEngineState::Playing && clockInitialized_) {
+        const auto now = std::chrono::steady_clock::now();
+        const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+            now - clockWall_).count();
+        if (elapsed > 0) {
+            clock_ = advancePlaybackClock(clock_, elapsed);
+        }
+        clockWall_ = now;
+    }
+
     speed_ = speedValue;
+    clock_.speed = speedValue;
+    error_.clear();
     return true;
 }
 
@@ -158,10 +219,6 @@ std::vector<NativeTrack> NativeMediaEngine::tracks() const {
     result.reserve(session_.streams().size());
 
     for (const auto& stream : session_.streams()) {
-        if (stream.type == FfmpegStreamType::Subtitle) {
-            // Subtitle tracks are discoverable at the session boundary, but
-            // have no NativeMediaEngine output selector yet.
-        }
         NativeTrack track;
         track.streamIndex = stream.index;
         track.type = stream.type;
@@ -183,10 +240,6 @@ HardwareDecodeMode NativeMediaEngine::hardwareDecodeMode() const noexcept {
 }
 
 bool NativeMediaEngine::hardwareDecodeActive() const noexcept {
-    // Hardware selection is intentionally reported false until a platform
-    // decoder has been created and its frames are proven to cross the output
-    // boundary. Merely requesting hardware acceleration is not evidence that
-    // it is active.
     return false;
 }
 
@@ -220,19 +273,79 @@ bool NativeMediaEngine::pump(std::size_t maxFrames) {
         return true;
     }
 
-    OutputSink sink(videoOutput_, audioOutput_);
+    const auto now = std::chrono::steady_clock::now();
+    if (!clockInitialized_) {
+        clock_.speed = speed_;
+        clock_.paused = false;
+        clockWall_ = now;
+        clockInitialized_ = true;
+    } else {
+        const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+            now - clockWall_).count();
+        if (elapsed > 0) {
+            clock_ = advancePlaybackClock(clock_, elapsed);
+        }
+        clockWall_ = now;
+    }
+
+    if (pendingVideo_) {
+        const auto delta = clockDeltaUs(clock_, pendingVideoFrame_.ptsUs);
+        if (delta <= kVideoEarlyToleranceUs) {
+            if (videoOutput_ != nullptr && !videoOutput_->present(pendingVideoFrame_)) {
+                error_ = "Video output rejected a decoded frame";
+                state_ = NativeEngineState::Error;
+                return false;
+            }
+            pendingVideo_ = false;
+            pendingVideoFrame_ = {};
+        } else {
+            return true;
+        }
+    }
+
+    auto videoHandler = [this](const FfmpegDecodedFrame& frame) -> bool {
+        if (!clockInitialized_) {
+            clock_.mediaUs = frame.ptsUs;
+            clock_.wallUs = 0;
+            clock_.speed = speed_;
+            clock_.paused = false;
+            clockWall_ = std::chrono::steady_clock::now();
+            clockInitialized_ = true;
+        }
+
+        const auto delta = clockDeltaUs(clock_, frame.ptsUs);
+        if (delta > kVideoEarlyToleranceUs) {
+            pendingVideoFrame_ = frame;
+            pendingVideo_ = true;
+            return false;
+        }
+
+        if (videoOutput_ == nullptr) return true;
+        if (!videoOutput_->present(frame)) {
+            error_ = "Video output rejected a decoded frame";
+            return false;
+        }
+        return true;
+    };
+
+    OutputSink sink(videoOutput_, audioOutput_, std::move(videoHandler));
     const bool decoded = session_.decodeToSink(sink, maxFrames);
 
     if (!decoded) {
+        if (pendingVideo_) {
+            error_.clear();
+            return true;
+        }
+
         const auto sessionError = session_.lastError();
         if (!sessionError.empty()) {
             error_ = sessionError;
             state_ = NativeEngineState::Error;
             return false;
         }
-        // A clean decode stop (for example end-of-file or a sink declining
-        // more work) is not a synthetic playback error.
+
         state_ = NativeEngineState::Paused;
+        clock_.paused = true;
         return false;
     }
 
