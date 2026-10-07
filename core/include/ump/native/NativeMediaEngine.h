@@ -1,5 +1,6 @@
 #pragma once
 #include "ump/FfmpegMediaSession.h"
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -63,5 +64,11 @@ private:
     NativeEngineState state_{NativeEngineState::Closed};
     double speed_{1.0};
     std::string error_;
+
+    PlaybackClock clock_{};
+    std::chrono::steady_clock::time_point clockWall_{};
+    bool clockInitialized_{false};
+    bool pendingVideo_{false};
+    FfmpegDecodedFrame pendingVideoFrame_{};
 };
 } // namespace ump::native
