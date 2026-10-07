@@ -139,6 +139,19 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.6.0"
+      - name: Fetch and verify pinned FFmpeg source
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '\r\n' < ci/ffmpeg-version.txt)"
+          mkdir -p build/ffmpeg-src
+          cd build/ffmpeg-src
+          wget -q "https://ffmpeg.org/releases/ffmpeg-$VERSION.tar.xz"
+          wget -q "https://ffmpeg.org/releases/ffmpeg-$VERSION.tar.xz.asc"
+          wget -q "https://ffmpeg.org/ffmpeg-devel.asc"
+          gpg --batch --import ffmpeg-devel.asc
+          gpg --batch --verify "ffmpeg-$VERSION.tar.xz.asc" "ffmpeg-$VERSION.tar.xz"
+          tar -xf "ffmpeg-$VERSION.tar.xz"
       - name: Build pinned FFmpeg for Android ABIs
         shell: bash
         run: |
