@@ -47,6 +47,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     private static native boolean nativeSetSurface(long handle, Surface surface);
     private static native boolean nativePlay(long handle);
     private static native boolean nativePause(long handle);
+    private static native boolean nativeStop(long handle);
     private static native boolean nativePump(long handle, int maxFrames);
     private static native boolean nativeSeekMs(long handle, long positionMs);
     private static native long nativePositionMs(long handle);
@@ -101,6 +102,10 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         playPause.setText("Play / Pause");
         playPause.setOnClickListener(v -> togglePlayback());
 
+        final Button stop = new Button(this);
+        stop.setText("Stop");
+        stop.setOnClickListener(v -> stopPlayback());
+
         seekBar = new SeekBar(this);
         seekBar.setMax(1);
         seekBar.setEnabled(false);
@@ -138,6 +143,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
 
         controls.addView(open, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         controls.addView(playPause, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        controls.addView(stop, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         root.addView(controls);
 
         statusView = new TextView(this);
@@ -235,6 +241,17 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             }
         }
         return target;
+    }
+
+    private void stopPlayback() {
+        if (nativePlayer == 0) return;
+        playing = false;
+        playbackHandler.removeCallbacks(pumpTask);
+        final boolean ok = nativeStop(nativePlayer);
+        statusView.setText(ok
+                ? "Stopped\nPosition: 0:00\nSession: " + nativeState(nativePlayer)
+                : "Stop failed: " + nativeLastError(nativePlayer));
+        updateTimeline();
     }
 
     private void togglePlayback() {
