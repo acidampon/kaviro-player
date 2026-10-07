@@ -510,6 +510,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             next.put(items.opt(i));
         }
         saveItems(QUEUE_KEY, next);
+        updateQueueSummary();
     }
 
     private void removeQueueItem(String uri) {
@@ -520,6 +521,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             if (item != null && !sameUri(item, uri)) next.put(item);
         }
         saveItems(QUEUE_KEY, next);
+        updateQueueSummary();
     }
 
     private void persistCurrentPosition() {
@@ -663,6 +665,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         items.put(index, swapped);
         items.put(target, current);
         saveItems(QUEUE_KEY, items);
+        updateQueueSummary();
         showQueueManager();
     }
 
@@ -674,11 +677,13 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             if (i != index) next.put(items.opt(i));
         }
         saveItems(QUEUE_KEY, next);
+        updateQueueSummary();
         showQueueManager();
     }
 
     private void clearQueue() {
         saveItems(QUEUE_KEY, new JSONArray());
+        updateQueueSummary();
         statusView.setText("Queue cleared");
     }
 
