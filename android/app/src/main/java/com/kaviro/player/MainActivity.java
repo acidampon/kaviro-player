@@ -522,6 +522,8 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             if (pfd != null && pfd.getFd() >= 0) {
                 final boolean opened = nativeOpenFd(nativePlayer, pfd.getFd());
                 if (opened) {
+                    currentUri = candidateUri;
+                    currentName = candidateName;
                     restoreSavedPosition(savedPosition);
                     addRecentItem(currentUri, currentName, nativePositionMs(nativePlayer), nativeDurationMs(nativePlayer));
                     lastPositionPersistMs = System.currentTimeMillis();
@@ -537,6 +539,8 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             final File localFile = copyToCache(uri);
             final boolean opened = nativeOpen(nativePlayer, localFile.getAbsolutePath());
             if (opened) {
+                currentUri = candidateUri;
+                currentName = candidateName;
                 restoreSavedPosition(savedPosition);
                 addRecentItem(currentUri, currentName, nativePositionMs(nativePlayer), nativeDurationMs(nativePlayer));
                 lastPositionPersistMs = System.currentTimeMillis();
