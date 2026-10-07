@@ -51,20 +51,22 @@ NativeMediaEngine::~NativeMediaEngine() {
 }
 
 bool NativeMediaEngine::open(const std::filesystem::path& path, bool recoveryMode) {
-    close();
-    error_.clear();
-
+    // Probe the replacement separately so a failed open cannot destroy a
+    // working current session. The caller can safely retry or resume it.
+    FfmpegMediaSession candidate;
     FfmpegOpenOptions options;
     options.hardwareDecodePreferred =
         hardwareMode_ != HardwareDecodeMode::Disabled;
     options.recoveryMode = recoveryMode;
 
-    if (!session_.open(path, options)) {
-        error_ = session_.lastError();
-        state_ = NativeEngineState::Error;
+    if (!candidate.open(path, options)) {
+        error_ = candidate.lastError();
         return false;
     }
 
+    session_.close();
+    session_ = std::move(candidate);
+    error_.clear();
     state_ = NativeEngineState::Open;
     clock_ = {};
     clock_.speed = speed_;
