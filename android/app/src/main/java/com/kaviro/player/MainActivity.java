@@ -250,6 +250,12 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     }
 
 
+    private void refreshPlaybackUi() {
+        updatePlaybackControls();
+        updateTimeline();
+        updateQueueSummary();
+    }
+
     private void updatePlaybackControls() {
         if (playPauseButton == null || nativePlayer == 0) return;
         final String state = nativeState(nativePlayer);
