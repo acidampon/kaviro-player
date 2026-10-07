@@ -6,6 +6,7 @@ on:
       - main
       - recovery-2026-10-06
       - ci-build-infrastructure-2026-10-07
+      - player-android-v1
   pull_request: {}
   workflow_dispatch: {}
 
