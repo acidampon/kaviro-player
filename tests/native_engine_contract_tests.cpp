@@ -29,6 +29,9 @@ int main() {
     e.binaryChecksum = "sha256:wrong";
     assert(!NativeEnginePackageValidator::validate(m, e, error));
 
+    static_assert(static_cast<int>(NativeEngineState::Ended) >
+                  static_cast<int>(NativeEngineState::Paused));
+
     NativeMediaEngine engine;
     assert(!engine.isOpen());
     assert(!engine.standaloneReady());
