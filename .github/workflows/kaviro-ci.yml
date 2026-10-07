@@ -220,6 +220,29 @@ jobs:
       - name: Assemble debug APK
         working-directory: android
         run: gradle :app:assembleDebug --no-daemon
+      - name: Verify packaged native runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find android/app/build/outputs/apk/debug -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$APK"
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libavformat.so.63'
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libavcodec.so.63'
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libavutil.so.61'
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libswresample.so.7'
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libswscale.so.10'
+          unzip -l "$APK" | grep -q 'lib/x86_64/libavformat.so.63'
+          unzip -l "$APK" | grep -q 'lib/x86_64/libavcodec.so.63'
+          unzip -l "$APK" | grep -q 'lib/x86_64/libavutil.so.61'
+          unzip -l "$APK" | grep -q 'lib/x86_64/libswresample.so.7'
+          unzip -l "$APK" | grep -q 'lib/x86_64/libswscale.so.10'
+          mkdir -p build/apk-native-check
+          cd build/apk-native-check
+          unzip -oq "$GITHUB_WORKSPACE/$APK" 'lib/arm64-v8a/libkaviro_android.so' 'lib/x86_64/libkaviro_android.so'
+          command -v readelf >/dev/null
+          readelf -lW lib/arm64-v8a/libkaviro_android.so | awk '$1=="LOAD"{print $NF}' | grep -qx '0x4000'
+          readelf -lW lib/x86_64/libkaviro_android.so | awk '$1=="LOAD"{print $NF}' | grep -qx '0x4000'
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
