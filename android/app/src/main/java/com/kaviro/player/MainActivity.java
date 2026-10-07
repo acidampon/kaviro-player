@@ -325,8 +325,11 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         if (nativePlayer == 0) return;
         if (playing) {
             playing = false;
+            resumeAfterFocusLoss = false;
+            resumeAfterLifecycle = false;
             playbackHandler.removeCallbacks(pumpTask);
             nativePause(nativePlayer);
+            abandonAudioFocus();
         } else {
             if (!requestAudioFocus()) {
                 statusView.setText("Playback blocked: audio focus unavailable");
@@ -337,6 +340,8 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             if (nativePlay(nativePlayer)) {
                 playing = true;
                 playbackHandler.post(pumpTask);
+            } else {
+                abandonAudioFocus();
             }
         }
         statusView.setText("Session: " + nativeState(nativePlayer));
@@ -344,6 +349,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
 
     @Override
     protected void onPause() {
+        resumeAfterFocusLoss = false;
         if (playing) {
             resumeAfterLifecycle = true;
             playing = false;
