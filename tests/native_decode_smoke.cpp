@@ -70,12 +70,63 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    int firstAudio = -1;
+    int secondAudio = -1;
+    for (const auto& stream : session.streams()) {
+        if (stream.type == ump::FfmpegStreamType::Audio) {
+            if (firstAudio < 0) firstAudio = stream.index;
+            else if (secondAudio < 0) secondAudio = stream.index;
+        }
+    }
+
+    if (secondAudio >= 0) {
+        if (!session.selectAudioTrack(secondAudio)) {
+            std::cerr << "second audio track selection failed: "
+                      << session.lastError() << "\n";
+            return 1;
+        }
+        if (!session.seekMs(0)) {
+            std::cerr << "track-switch seek failed: " << session.lastError() << "\n";
+            return 1;
+        }
+
+        CountingSink switchedSink;
+        if (!session.decodeToSink(switchedSink, 3)) {
+            std::cerr << "second-track decode failed: "
+                      << session.lastError() << "\n";
+            return 1;
+        }
+        if (switchedSink.audioFrames == 0 || !switchedSink.error.empty()) {
+            std::cerr << "second-track output invalid: "
+                      << switchedSink.error << "\n";
+            return 1;
+        }
+
+        if (session.selectAudioTrack(999999)) {
+            std::cerr << "invalid audio track was accepted\n";
+            return 1;
+        }
+        bool secondStillSelected = false;
+        for (const auto& stream : session.streams()) {
+            if (stream.index == secondAudio &&
+                stream.type == ump::FfmpegStreamType::Audio) {
+                secondStillSelected = stream.selected;
+            }
+        }
+        if (!secondStillSelected) {
+            std::cerr << "invalid track selection cleared the active track\n";
+            return 1;
+        }
+    }
+
     if (!session.seekMs(0)) {
         std::cerr << "seek failed: " << session.lastError() << "\n";
         return 1;
     }
 
     std::cout << "KAVIRO native decode smoke: PASS (" << sink.frames
-              << " frames)\n";
+              << " frames";
+    if (firstAudio >= 0 && secondAudio >= 0) std::cout << ", track switching verified";
+    std::cout << ")\n";
     return 0;
 }
