@@ -240,8 +240,11 @@ jobs:
           cd build/apk-native-check
           unzip -oq "$GITHUB_WORKSPACE/$APK" 'lib/arm64-v8a/libkaviro_android.so' 'lib/x86_64/libkaviro_android.so'
           command -v readelf >/dev/null
-          readelf -lW lib/arm64-v8a/libkaviro_android.so | awk '$1=="LOAD"{print $NF}' | grep -qx '0x4000'
-          readelf -lW lib/x86_64/libkaviro_android.so | awk '$1=="LOAD"{print $NF}' | grep -qx '0x4000'
+          for SO in lib/arm64-v8a/libkaviro_android.so lib/x86_64/libkaviro_android.so; do
+            echo "ELF LOAD alignment: $SO"
+            readelf -lW "$SO" | awk '$1=="LOAD"{print "  alignment=" $NF}'
+            test "$(readelf -lW "$SO" | awk '$1=="LOAD"{print $NF}' | sort -u | tr '\n' ' ' | sed 's/[[:space:]]*$//')" = "0x4000"
+          done
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
