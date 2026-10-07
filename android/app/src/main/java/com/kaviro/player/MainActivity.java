@@ -305,8 +305,8 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
 
         final JSONObject next = items.optJSONObject(0);
         if (next == null) {
-            abandonAudioFocus();
-            runOnUiThread(() -> statusView.setText("Playback ended\nQueue item is invalid"));
+            dropFirstQueueItem();
+            advanceQueueAfterEnd();
             return;
         }
 
