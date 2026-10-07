@@ -741,6 +741,9 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
 
     private boolean openUri(Uri uri) {
         persistCurrentPosition();
+        if (nativePlayer != 0 && "playing".equals(nativeState(nativePlayer))) {
+            nativePause(nativePlayer);
+        }
         playing = false;
         playbackHandler.removeCallbacks(pumpTask);
         abandonAudioFocus();
