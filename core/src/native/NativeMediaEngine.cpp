@@ -288,7 +288,7 @@ bool NativeMediaEngine::pump(std::size_t maxFrames) {
     // Prefer the audio device clock when the output can provide one. This
     // makes audio the timing master while retaining the monotonic wall clock
     // fallback for outputs that do not expose hardware position.
-    if (audioOutput_ != nullptr) {
+    if (audioOutput_ != nullptr && speed_ == 1.0) {
         const auto audioUs = audioOutput_->clockPositionUs();
         if (audioUs >= 0) {
             clock_.mediaUs = audioUs;
@@ -340,6 +340,17 @@ bool NativeMediaEngine::pump(std::size_t maxFrames) {
             clock_.paused = false;
             clockWall_ = std::chrono::steady_clock::now();
             clockInitialized_ = true;
+        }
+
+        if (audioOutput_ != nullptr && speed_ == 1.0) {
+            const auto audioUs = audioOutput_->clockPositionUs();
+            if (audioUs >= 0) {
+                clock_.mediaUs = audioUs;
+                clock_.speed = speed_;
+                clock_.paused = false;
+                clockWall_ = std::chrono::steady_clock::now();
+                clockInitialized_ = true;
+            }
         }
 
         const auto delta = clockDeltaUs(clock_, frame.ptsUs);
