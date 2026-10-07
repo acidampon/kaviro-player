@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
+#include <time.h>
 
 namespace kaviro::android {
 
@@ -71,7 +73,31 @@ bool AndroidAudioOutput::write(const ump::FfmpegDecodedFrame& frame) {
         remaining -= static_cast<std::size_t>(written) * bytesPerFrame;
         if (offsetFrames >= frames) break;
     }
-    return offsetFrames == frames;
+
+    if (offsetFrames != frames) return false;
+
+    if (mediaBaseUs_ < 0) {
+        std::int64_t framePosition = 0;
+        std::int64_t timeNanos = 0;
+        const auto timestampResult = AAudioStream_getTimestamp(
+            stream_, CLOCK_MONOTONIC, &framePosition, &timeNanos);
+        if (timestampResult == AAUDIO_OK && framePosition >= 0) {
+            const auto frameDurationUs =
+                static_cast<long double>(frames) * 1'000'000.0L /
+                static_cast<long double>(frame.sampleRate);
+            const auto positionUs =
+                static_cast<long double>(framePosition) * 1'000'000.0L /
+                static_cast<long double>(frame.sampleRate);
+            const auto base =
+                static_cast<long double>(frame.ptsUs) + frameDurationUs - positionUs;
+            if (base >= 0.0L &&
+                base <= static_cast<long double>(std::numeric_limits<std::int64_t>::max())) {
+                mediaBaseUs_ = static_cast<std::int64_t>(base);
+                streamBaseFrame_ = 0;
+            }
+        }
+    }
+    return true;
 }
 
 void AndroidAudioOutput::closeLocked() {
@@ -82,9 +108,34 @@ void AndroidAudioOutput::closeLocked() {
     }
     sampleRate_ = 0;
     channels_ = 0;
+    mediaBaseUs_ = -1;
+    streamBaseFrame_ = -1;
 }
 
 void AndroidAudioOutput::reset() { close(); }
+
+std::int64_t AndroidAudioOutput::clockPositionUs() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (stream_ == nullptr || sampleRate_ <= 0 ||
+        mediaBaseUs_ < 0 || streamBaseFrame_ < 0) {
+        return -1;
+    }
+
+    std::int64_t framePosition = 0;
+    std::int64_t timeNanos = 0;
+    const auto result = AAudioStream_getTimestamp(
+        stream_, CLOCK_MONOTONIC, &framePosition, &timeNanos);
+    if (result != AAUDIO_OK || framePosition < streamBaseFrame_) return -1;
+
+    const auto deltaFrames = framePosition - streamBaseFrame_;
+    const auto scaled = static_cast<long double>(deltaFrames) *
+                        1'000'000.0L /
+                        static_cast<long double>(sampleRate_);
+    if (scaled > static_cast<long double>(std::numeric_limits<std::int64_t>::max())) {
+        return std::numeric_limits<std::int64_t>::max();
+    }
+    return mediaBaseUs_ + static_cast<std::int64_t>(scaled);
+}
 
 void AndroidAudioOutput::close() {
     std::lock_guard<std::mutex> lock(mutex_);
