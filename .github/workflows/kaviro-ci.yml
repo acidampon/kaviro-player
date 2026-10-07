@@ -70,12 +70,14 @@ jobs:
           make install
 
       - name: Configure native FFmpeg build
-        run: >
-          cmake -S . -B build/linux-ffmpeg -G Ninja
-          -DCMAKE_BUILD_TYPE=Release
-          -DUMP_BUILD_TESTS=ON
-          -DKAVIRO_FFMPEG_NATIVE=ON
-          -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/build/ffmpeg-prefix"
+        shell: bash
+        run: |
+          export PKG_CONFIG_PATH="$GITHUB_WORKSPACE/build/ffmpeg-prefix/lib/pkgconfig:$PKG_CONFIG_PATH"
+          cmake -S . -B build/linux-ffmpeg -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DUMP_BUILD_TESTS=ON \
+            -DKAVIRO_FFMPEG_NATIVE=ON
+
       - name: Build native FFmpeg boundary
         run: cmake --build build/linux-ffmpeg --parallel
       - name: Test native boundary
