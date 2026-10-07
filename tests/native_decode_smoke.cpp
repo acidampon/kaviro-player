@@ -11,6 +11,12 @@ class CountingSink final : public ump::FfmpegFrameSink {
 public:
     bool onFrame(const ump::FfmpegDecodedFrame& frame) override {
         ++frames;
+        if (!frame.normalized) {
+            error = "decoded frame is not normalized";
+            return false;
+        }
+        if (frame.type == ump::FfmpegStreamType::Video) ++videoFrames;
+        if (frame.type == ump::FfmpegStreamType::Audio) ++audioFrames;
         if (frame.ownedData.empty() || frame.planes.empty()) {
             error = "decoded frame has no owned payload";
             return false;
@@ -26,6 +32,8 @@ public:
     }
 
     std::size_t frames{0};
+    std::size_t videoFrames{0};
+    std::size_t audioFrames{0};
     std::string error;
 };
 
@@ -57,7 +65,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    if (sink.frames == 0 || !sink.error.empty()) {
+    if (sink.frames == 0 || sink.videoFrames == 0 || sink.audioFrames == 0 || !sink.error.empty()) {
         std::cerr << "invalid decoded output: " << sink.error << "\n";
         return 1;
     }
