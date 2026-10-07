@@ -11,6 +11,6 @@ It currently proves:
 - JNI library packaging
 - arm64-v8a and x86_64 APK native libraries
 
-It intentionally does **not** claim media playback yet. The next native milestone is wiring the recovered KAVIRO C++ engine into this module, followed by verified FFmpeg packaging for Android.
+It now wires the recovered KAVIRO native engine into the Android shell, including SurfaceView video presentation and AAudio PCM output. CI builds pinned FFmpeg 9.0.2 for arm64-v8a and x86_64 and packages a debug APK. Playback remains subject to CI/device verification.
 
 Android's official build model supports C/C++ through CMake/NDK and packages the resulting native library into the APK. See the Android native-code documentation for the supported integration model.
