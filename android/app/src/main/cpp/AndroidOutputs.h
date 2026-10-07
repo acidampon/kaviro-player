@@ -6,6 +6,7 @@
 #include <android/native_window.h>
 #include <cstdint>
 #include <mutex>
+#include <vector>
 
 namespace kaviro::android {
 
@@ -23,6 +24,9 @@ public:
 
 private:
     bool ensureStream(int sampleRate, int channels);
+    bool flushPendingLocked();
+    bool appendPendingLocked(const std::uint8_t* data, std::size_t bytes,
+                             int sampleRate, int channels, std::int64_t ptsUs);
     void closeLocked();
 
     mutable std::mutex mutex_;
@@ -31,6 +35,10 @@ private:
     int channels_{0};
     std::int64_t mediaBaseUs_{-1};
     std::int64_t streamBaseFrame_{-1};
+    std::vector<std::uint8_t> pendingAudio_;
+    std::size_t pendingOffset_{0};
+    std::int64_t pendingPtsUs_{-1};
+    static constexpr std::size_t kMaxPendingAudioBytes = 2 * 1024 * 1024;
 };
 
 class AndroidVideoOutput final : public ump::native::VideoOutput {
