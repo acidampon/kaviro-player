@@ -159,7 +159,17 @@ jobs:
           gpg --batch --import ffmpeg-devel.asc
           gpg --batch --verify "ffmpeg-$VERSION.tar.xz.asc" "ffmpeg-$VERSION.tar.xz"
           tar -xf "ffmpeg-$VERSION.tar.xz"
+      - name: Cache pinned Android FFmpeg binaries
+        id: ffmpeg-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            android/app/src/main/jniLibs
+            android/app/src/main/ffmpeg/include
+          key: android-ffmpeg-9.0.2-ndk28.2.13676358-${{ hashFiles('ci/ffmpeg-version.txt') }}
+
       - name: Build pinned FFmpeg for Android ABIs
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -euo pipefail
