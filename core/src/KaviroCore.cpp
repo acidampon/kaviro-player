@@ -16,7 +16,7 @@ std::string r="\"";
 for(char c:s){if(c=='\"')r+="\\\"";else r+=c;}
 return r+"\"";
 #else
-std::string r="'";for(char c:s)r+=c=='\\''?"'\\\\''":std::string(1,c);return r+"'";
+std::string r="'"; for(char c : s){ if(c=='\\'') r += "'\\\\''"; else r += c; } return r+"'";
 #endif
 }}bool ex(sqlite3*d,const char*s){return sqlite3_exec(d,s,nullptr,nullptr,nullptr)==SQLITE_OK;}}
 namespace ump{
