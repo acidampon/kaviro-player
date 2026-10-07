@@ -514,9 +514,9 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         playing = false;
         playbackHandler.removeCallbacks(pumpTask);
         abandonAudioFocus();
-        currentUri = uri.toString();
-        currentName = queryDisplayName(uri);
-        final JSONObject saved = findRecent(currentUri);
+        final String candidateUri = uri.toString();
+        final String candidateName = queryDisplayName(uri);
+        final JSONObject saved = findRecent(candidateUri);
         final long savedPosition = saved == null ? 0 : Math.max(0, saved.optLong("positionMs", 0));
         try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(uri, "r")) {
             if (pfd != null && pfd.getFd() >= 0) {
