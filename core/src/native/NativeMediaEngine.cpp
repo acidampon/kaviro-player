@@ -198,6 +198,25 @@ double NativeMediaEngine::speed() const noexcept {
     return speed_;
 }
 
+std::int64_t NativeMediaEngine::positionMs() const noexcept {
+    if (!session_.isOpen()) return 0;
+    const auto mediaUs = std::max<std::int64_t>(0, clock_.mediaUs);
+    return mediaUs / 1000;
+}
+
+std::int64_t NativeMediaEngine::durationMs() const noexcept {
+    if (!session_.isOpen()) return 0;
+    std::int64_t duration = 0;
+    for (const auto& stream : session_.streams()) {
+        if (stream.type == FfmpegStreamType::Audio ||
+            stream.type == FfmpegStreamType::Video) {
+            duration = std::max(duration, stream.durationMs);
+        }
+    }
+    return std::max<std::int64_t>(0, duration);
+}
+
+
 bool NativeMediaEngine::selectAudioTrack(int streamIndex) {
     if (!session_.selectAudioTrack(streamIndex)) {
         error_ = session_.lastError();
