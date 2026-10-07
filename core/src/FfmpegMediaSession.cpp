@@ -388,26 +388,82 @@ const std::vector<FfmpegStreamInfo>& FfmpegMediaSession::streams() const { retur
 
 bool FfmpegMediaSession::selectAudioTrack(int index) {
     if (!open_) { error_ = "session not open"; return false; }
-    bool found = false;
-    for (auto& stream : streams_) {
-        if (stream.type != FfmpegStreamType::Audio) continue;
-        stream.selected = stream.index == index;
-        found |= stream.selected;
+
+    const auto candidate = std::find_if(
+        streams_.begin(), streams_.end(),
+        [index](const FfmpegStreamInfo& stream) {
+            return stream.type == FfmpegStreamType::Audio &&
+                   stream.index == index;
+        });
+    if (candidate == streams_.end()) {
+        error_ = "audio track not found";
+        return false;
     }
-    if (!found) error_ = "audio track not found";
-    return found;
+
+    for (auto& stream : streams_) {
+        if (stream.type == FfmpegStreamType::Audio)
+            stream.selected = stream.index == index;
+    }
+
+#if defined(KAVIRO_FFMPEG_NATIVE)
+    if (impl_) {
+        for (std::size_t i = 0; i < impl_->streamToDecoder.size(); ++i) {
+            const int decoderIndex = impl_->streamToDecoder[i];
+            if (decoderIndex < 0 || decoderIndex >= static_cast<int>(impl_->decoders.size()))
+                continue;
+            const auto type = std::find_if(
+                streams_.begin(), streams_.end(),
+                [i](const FfmpegStreamInfo& stream) {
+                    return stream.index == static_cast<int>(i);
+                });
+            if (type != streams_.end() && type->type == FfmpegStreamType::Audio)
+                avcodec_flush_buffers(impl_->decoders[decoderIndex]);
+        }
+    }
+#endif
+
+    error_.clear();
+    return true;
 }
 
 bool FfmpegMediaSession::selectVideoTrack(int index) {
     if (!open_) { error_ = "session not open"; return false; }
-    bool found = false;
-    for (auto& stream : streams_) {
-        if (stream.type != FfmpegStreamType::Video) continue;
-        stream.selected = stream.index == index;
-        found |= stream.selected;
+
+    const auto candidate = std::find_if(
+        streams_.begin(), streams_.end(),
+        [index](const FfmpegStreamInfo& stream) {
+            return stream.type == FfmpegStreamType::Video &&
+                   stream.index == index;
+        });
+    if (candidate == streams_.end()) {
+        error_ = "video track not found";
+        return false;
     }
-    if (!found) error_ = "video track not found";
-    return found;
+
+    for (auto& stream : streams_) {
+        if (stream.type == FfmpegStreamType::Video)
+            stream.selected = stream.index == index;
+    }
+
+#if defined(KAVIRO_FFMPEG_NATIVE)
+    if (impl_) {
+        for (std::size_t i = 0; i < impl_->streamToDecoder.size(); ++i) {
+            const int decoderIndex = impl_->streamToDecoder[i];
+            if (decoderIndex < 0 || decoderIndex >= static_cast<int>(impl_->decoders.size()))
+                continue;
+            const auto type = std::find_if(
+                streams_.begin(), streams_.end(),
+                [i](const FfmpegStreamInfo& stream) {
+                    return stream.index == static_cast<int>(i);
+                });
+            if (type != streams_.end() && type->type == FfmpegStreamType::Video)
+                avcodec_flush_buffers(impl_->decoders[decoderIndex]);
+        }
+    }
+#endif
+
+    error_.clear();
+    return true;
 }
 
 #if defined(KAVIRO_FFMPEG_NATIVE)
