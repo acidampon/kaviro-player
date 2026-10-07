@@ -1,0 +1,110 @@
+name: KAVIRO CI
+
+on:
+  push:
+    branches:
+      - main
+      - recovery-2026-10-06
+      - ci-build-infrastructure-2026-10-07
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-core:
+    name: Linux core
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev
+
+      - name: Configure
+        run: |
+          cmake -S . -B build/linux-core -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DUMP_BUILD_TESTS=ON             -DKAVIRO_FFMPEG_NATIVE=OFF
+
+      - name: Build
+        run: cmake --build build/linux-core --parallel
+
+      - name: Test
+        working-directory: build/linux-core
+        run: ctest --output-on-failure
+
+  linux-ffmpeg-boundary:
+    name: Linux FFmpeg native boundary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ pkg-config libsqlite3-dev             libavformat-dev libavcodec-dev libavutil-dev
+
+      - name: Configure native FFmpeg build
+        run: |
+          cmake -S . -B build/linux-ffmpeg -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DUMP_BUILD_TESTS=ON             -DKAVIRO_FFMPEG_NATIVE=ON
+
+      - name: Build native FFmpeg boundary
+        run: cmake --build build/linux-ffmpeg --parallel
+
+      - name: Test native boundary
+        working-directory: build/linux-ffmpeg
+        run: ctest --output-on-failure
+
+  windows-core:
+    name: Windows core
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install SQLite3
+        shell: pwsh
+        run: |
+          vcpkg install sqlite3:x64-windows
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S . -B build/windows-core `
+            -G "Visual Studio 17 2022" `
+            -A x64 `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DUMP_BUILD_TESTS=ON `
+            -DKAVIRO_FFMPEG_NATIVE=OFF
+
+      - name: Build
+        run: cmake --build build/windows-core --config Release --parallel
+
+      - name: Test
+        working-directory: build/windows-core
+        run: ctest -C Release --output-on-failure
+
+  android-readiness:
+    name: Android readiness gate
+    runs-on: ubuntu-latest
+    if: hashFiles('android/settings.gradle', 'android/settings.gradle.kts', 'android/build.gradle', 'android/build.gradle.kts') != ''
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Android project detected
+        run: echo "Android project detected; dedicated Android build workflow will run after the module is wired to the KAVIRO native library."
+
+  android-not-yet-present:
+    name: Android project not present (informational)
+    runs-on: ubuntu-latest
+    if: hashFiles('android/settings.gradle', 'android/settings.gradle.kts', 'android/build.gradle', 'android/build.gradle.kts') == ''
+    steps:
+      - name: Report honest status
+        run: |
+          echo "No Android Gradle project is present yet."
+          echo "This is intentionally informational; it does not claim an APK build."
