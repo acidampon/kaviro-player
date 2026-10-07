@@ -299,6 +299,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             abandonAudioFocus();
             runOnUiThread(() -> statusView.setText(
                     "Playback ended\nQueue is empty\nSession: " + nativeState(nativePlayer)));
+            refreshPlaybackUi();
             return;
         }
 
@@ -322,6 +323,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             runOnUiThread(() -> statusView.setText(
                     "Next item opened but playback is waiting for audio focus\n" +
                     "Session: " + nativeState(nativePlayer)));
+            refreshPlaybackUi();
             return;
         }
         if (nativePlay(nativePlayer)) {
@@ -330,10 +332,12 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             final String nextName = next.optString("name", "Next media");
             runOnUiThread(() -> statusView.setText(
                     "Playing next: " + nextName + "\nSession: " + nativeState(nativePlayer)));
+            refreshPlaybackUi();
         } else {
             abandonAudioFocus();
             runOnUiThread(() -> statusView.setText(
                     "Next item failed: " + nativeLastError(nativePlayer)));
+            refreshPlaybackUi();
         }
     }
 
@@ -743,7 +747,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                     lastPositionPersistMs = System.currentTimeMillis();
                     runOnUiThread(() -> statusView.setText(
                             "Opened: " + currentName + "\nSession: " + nativeState(nativePlayer)));
-                    runOnUiThread(this::updateTimeline);
+                    runOnUiThread(this::refreshPlaybackUi);
                     return;
                 }
             }
@@ -762,7 +766,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             runOnUiThread(() -> statusView.setText(
                     opened ? "Opened: " + currentName + "\nSession: " + nativeState(nativePlayer)
                            : "Open failed: " + nativeLastError(nativePlayer)));
-            runOnUiThread(this::updateTimeline);
+            runOnUiThread(this::refreshPlaybackUi);
         } catch (Exception e) {
             runOnUiThread(() -> statusView.setText("Open failed: " + e.getMessage()));
             refreshPlaybackUi();
@@ -815,6 +819,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                     playing = true;
                     playbackHandler.post(pumpTask);
                     statusView.setText("Playback resumed\nSession: " + nativeState(nativePlayer));
+                    refreshPlaybackUi();
                 }
             }
             return;
@@ -832,6 +837,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             hasAudioFocus = false;
             if (focusChange != AudioManager.AUDIOFOCUS_LOSS) {
                 statusView.setText("Paused for audio focus\nSession: " + nativeState(nativePlayer));
+                refreshPlaybackUi();
             }
         }
     }
