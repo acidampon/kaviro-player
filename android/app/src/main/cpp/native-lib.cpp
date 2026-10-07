@@ -112,6 +112,15 @@ Java_com_kaviro_player_MainActivity_nativePause(JNIEnv*, jclass, jlong handle) {
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
+Java_com_kaviro_player_MainActivity_nativeStop(
+    JNIEnv*, jclass, jlong handle) {
+    auto* player = fromHandle(handle);
+    if (player == nullptr) return JNI_FALSE;
+    std::lock_guard<std::mutex> lock(player->mutex);
+    return player->engine.stop() ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
 Java_com_kaviro_player_MainActivity_nativeSeekMs(
     JNIEnv*, jclass, jlong handle, jlong positionMs) {
     auto* player = fromHandle(handle);
