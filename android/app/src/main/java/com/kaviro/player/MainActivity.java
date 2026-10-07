@@ -36,6 +36,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
 
     private long nativePlayer;
     private TextView statusView;
+    private TextView queueSummaryView;
     private SurfaceView surfaceView;
     private HandlerThread playbackThread;
     private Handler playbackHandler;
@@ -234,10 +235,36 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         statusView.setPadding(16, 8, 16, 16);
         root.addView(statusView);
 
+        queueSummaryView = new TextView(this);
+        queueSummaryView.setPadding(16, 4, 16, 12);
+        root.addView(queueSummaryView);
+        updateQueueSummary();
+
         setContentView(root);
         playbackHandler.post(timelineTask);
     }
 
+
+    private void updateQueueSummary() {
+        if (queueSummaryView == null) return;
+        final JSONArray items = loadItems(QUEUE_KEY);
+        final StringBuilder text = new StringBuilder("Queue: ");
+        if (items.length() == 0) {
+            text.append("empty");
+        } else {
+            text.append(items.length()).append(" upcoming");
+            final JSONObject next = items.optJSONObject(0);
+            if (next != null) {
+                text.append("\nNext: ").append(next.optString("name", "Unknown media"));
+            }
+            if (items.length() > 1) {
+                text.append("\nThen: ").append(items.optJSONObject(1) == null
+                        ? "Unknown media"
+                        : items.optJSONObject(1).optString("name", "Unknown media"));
+            }
+        }
+        runOnUiThread(() -> queueSummaryView.setText(text.toString()));
+    }
 
     private void advanceQueueAfterEnd() {
         if (nativePlayer == 0) return;
