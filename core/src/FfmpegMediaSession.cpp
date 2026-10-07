@@ -46,7 +46,7 @@ FfmpegMediaSession::FfmpegMediaSession() : impl_(new Impl) {}
 
 FfmpegMediaSession::~FfmpegMediaSession() { close(); delete impl_; }
 
-FfmpegMediaSession::FfmpegMediaSession(FfmpegMediaSession&& other) noexcept
+FfmpegMediaSession::FfmpegMediaSession(FfmpegMediaSession&& other)
     : impl_(other.impl_),
       streams_(std::move(other.streams_)),
       error_(std::move(other.error_)),
@@ -59,7 +59,7 @@ FfmpegMediaSession::FfmpegMediaSession(FfmpegMediaSession&& other) noexcept
     other.open_ = false;
 }
 
-FfmpegMediaSession& FfmpegMediaSession::operator=(FfmpegMediaSession&& other) noexcept {
+FfmpegMediaSession& FfmpegMediaSession::operator=(FfmpegMediaSession&& other) {
     if (this == &other) return *this;
 
     close();
