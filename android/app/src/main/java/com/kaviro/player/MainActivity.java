@@ -199,7 +199,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         final int[] indexes = new int[tracks.length];
         for (int i = 0; i < tracks.length; ++i) {
             final String value = tracks[i] == null ? "" : tracks[i];
-            final int tab = value.indexOf('\\t');
+            final int tab = value.indexOf('\t');
             try {
                 indexes[i] = Integer.parseInt(tab > 0 ? value.substring(0, tab) : value);
             } catch (NumberFormatException e) {
