@@ -267,6 +267,8 @@ std::int64_t NativeMediaEngine::durationMs() const noexcept {
 
 
 bool NativeMediaEngine::selectAudioTrack(int streamIndex) {
+    const bool wasPlaying = state_ == NativeEngineState::Playing;
+    const std::int64_t positionUs = std::max<std::int64_t>(0, clock_.mediaUs);
     if (!session_.selectAudioTrack(streamIndex)) {
         error_ = session_.lastError();
         if (session_.isOpen()) state_ = NativeEngineState::Error;
@@ -275,11 +277,22 @@ bool NativeMediaEngine::selectAudioTrack(int streamIndex) {
     if (audioOutput_ != nullptr) audioOutput_->reset();
     pendingVideo_ = false;
     pendingVideoFrame_ = {};
+    // Resetting the audio device also resets its hardware clock. Keep the
+    // media timeline anchored at the pre-switch position so video does not
+    // jump back to the beginning on the next pump.
+    clock_.mediaUs = positionUs;
+    clock_.wallUs = 0;
+    clock_.speed = speed_;
+    clock_.paused = !wasPlaying;
+    clockWall_ = std::chrono::steady_clock::now();
+    clockInitialized_ = true;
     error_.clear();
     return true;
 }
 
 bool NativeMediaEngine::selectVideoTrack(int streamIndex) {
+    const bool wasPlaying = state_ == NativeEngineState::Playing;
+    const std::int64_t positionUs = std::max<std::int64_t>(0, clock_.mediaUs);
     if (!session_.selectVideoTrack(streamIndex)) {
         error_ = session_.lastError();
         if (session_.isOpen()) state_ = NativeEngineState::Error;
@@ -288,6 +301,12 @@ bool NativeMediaEngine::selectVideoTrack(int streamIndex) {
     if (videoOutput_ != nullptr) videoOutput_->reset();
     pendingVideo_ = false;
     pendingVideoFrame_ = {};
+    clock_.mediaUs = positionUs;
+    clock_.wallUs = 0;
+    clock_.speed = speed_;
+    clock_.paused = !wasPlaying;
+    clockWall_ = std::chrono::steady_clock::now();
+    clockInitialized_ = true;
     error_.clear();
     return true;
 }
