@@ -3,10 +3,39 @@
 #include <array>
 #include <cstdlib>
 #include <sstream>
-namespace{std::string q(const std::string&s){std::string r="'";for(char c:s)r+=c=='\''?"'\\''":std::string(1,c);return r+"'";}bool ex(sqlite3*d,const char*s){return sqlite3_exec(d,s,nullptr,nullptr,nullptr)==SQLITE_OK;}}
+#ifdef _WIN32
+#define KAVIRO_POPEN _popen
+#define KAVIRO_PCLOSE _pclose
+#else
+#define KAVIRO_POPEN popen
+#define KAVIRO_PCLOSE pclose
+#endif
+namespace {
+std::string q(const std::string& s) {
+#ifdef _WIN32
+    std::string r = "\"";
+    for (char c : s) {
+        if (c == '\"') r += "\\\"";
+        else r += c;
+    }
+    return r + "\"";
+#else
+    std::string r = "'";
+    for (char c : s) {
+        if (c == '\'') r += "'\\\\''";
+        else r += c;
+    }
+    return r + "'";
+#endif
+}
+
+bool ex(sqlite3* d, const char* s) {
+    return sqlite3_exec(d, s, nullptr, nullptr, nullptr) == SQLITE_OK;
+}
+}
 namespace ump{
 std::string mediaTypeName(MediaType t){return t==MediaType::Video?"video":t==MediaType::Audio?"audio":"unknown";}std::string titleFromPath(const std::filesystem::path&p){return p.stem().string();}std::string stableMediaId(const std::filesystem::path&p){std::error_code e;auto c=std::filesystem::weakly_canonical(p,e);return std::to_string(std::hash<std::string>{}((e?p.lexically_normal():c).generic_string()));}
-MediaProbeResult MediaProbe::inspect(const std::string&p){MediaProbeResult r;std::string cmd="ffprobe -v error -show_entries format=format_name,duration,bit_rate:stream=codec_type,codec_name,width,height -of default=noprint_wrappers=1:nokey=0 -- "+q(p)+" 2>&1";FILE*f=popen(cmd.c_str(),"r");if(!f){r.error="ffprobe unavailable";return r;}std::array<char,4096>b{};std::string o;while(fgets(b.data(),b.size(),f))o+=b.data();int rc=pclose(f);if(rc){r.error=o.empty()?"ffprobe failed":o;return r;}std::istringstream in(o);std::string l,c;bool v=false,a=false;while(std::getline(in,l)){auto n=l.find('=');if(n<1)continue;auto k=l.substr(0,n),x=l.substr(n+1);if(k=="format_name")r.format=x;else if(k=="duration")r.durationMs=std::max<std::int64_t>(0,(std::int64_t)(std::atof(x.c_str())*1000));else if(k=="bit_rate")r.bitrate=std::max<std::int64_t>(0,std::atoll(x.c_str()));else if(k=="codec_type"){v|=x=="video";a|=x=="audio";}else if(k=="codec_name"&&c.empty())c=x;else if(k=="width")r.width=std::max(0,std::atoi(x.c_str()));else if(k=="height")r.height=std::max(0,std::atoi(x.c_str()));}r.codec=c;r.type=v?MediaType::Video:a?MediaType::Audio:MediaType::Unknown;r.success=r.type!=MediaType::Unknown;if(!r.success)r.error="No audio/video stream detected";return r;}
+MediaProbeResult MediaProbe::inspect(const std::string&p){MediaProbeResult r;std::string cmd="ffprobe -v error -show_entries format=format_name,duration,bit_rate:stream=codec_type,codec_name,width,height -of default=noprint_wrappers=1:nokey=0 -- "+q(p)+" 2>&1";FILE*f=KAVIRO_POPEN(cmd.c_str(),"r");if(!f){r.error="ffprobe unavailable";return r;}std::array<char,4096>b{};std::string o;while(fgets(b.data(),b.size(),f))o+=b.data();int rc=KAVIRO_PCLOSE(f);if(rc){r.error=o.empty()?"ffprobe failed":o;return r;}std::istringstream in(o);std::string l,c;bool v=false,a=false;while(std::getline(in,l)){auto n=l.find('=');if(n<1)continue;auto k=l.substr(0,n),x=l.substr(n+1);if(k=="format_name")r.format=x;else if(k=="duration")r.durationMs=std::max<std::int64_t>(0,(std::int64_t)(std::atof(x.c_str())*1000));else if(k=="bit_rate")r.bitrate=std::max<std::int64_t>(0,std::atoll(x.c_str()));else if(k=="codec_type"){v|=x=="video";a|=x=="audio";}else if(k=="codec_name"&&c.empty())c=x;else if(k=="width")r.width=std::max(0,std::atoi(x.c_str()));else if(k=="height")r.height=std::max(0,std::atoi(x.c_str()));}r.codec=c;r.type=v?MediaType::Video:a?MediaType::Audio:MediaType::Unknown;r.success=r.type!=MediaType::Unknown;if(!r.success)r.error="No audio/video stream detected";return r;}
 std::vector<MediaItem>MediaLibrary::scan(const std::filesystem::path&r,const Progress&p){ScanDiagnostics d;return scanDetailed(r,d,p);}std::vector<MediaItem>MediaLibrary::scanDetailed(const std::filesystem::path&r,ScanDiagnostics&d,const Progress&p){items_.clear();cancelled_=false;std::error_code e;if(!std::filesystem::exists(r,e)||e){++d.traversalErrors;d.errors.push_back("Root missing or inaccessible");return items_;}std::unordered_set<std::string>seen;std::filesystem::recursive_directory_iterator it(r,std::filesystem::directory_options::skip_permission_denied,e),end;for(;it!=end&&!cancelled_;it.increment(e)){if(e){++d.traversalErrors;e.clear();continue;}if(!it->is_regular_file(e)){e.clear();continue;}++d.filesVisited;auto pth=it->path();auto key=std::filesystem::weakly_canonical(pth,e).generic_string();e.clear();if(!seen.insert(key).second)continue;++d.candidates;auto probe=MediaProbe::inspect(pth.string());if(!probe.success){++d.inspectionFailures;continue;}items_.push_back({stableMediaId(pth),pth,titleFromPath(pth),probe.format,probe.type,probe.durationMs});++d.detectedMedia;if(p)p(pth,d.filesVisited);}return items_;}void MediaLibrary::cancel(){cancelled_=true;}bool MediaLibrary::cancelled()const{return cancelled_;}const std::vector<MediaItem>&MediaLibrary::items()const{return items_;}
 bool ExternalPlayerAdapter::play(const std::string&p){if(p.empty())return false;state_=EngineState::Playing;return true;}bool ExternalPlayerAdapter::pause(){if(state_!=EngineState::Playing)return false;state_=EngineState::Paused;return true;}bool ExternalPlayerAdapter::seek(std::int64_t p){return p>=0;}bool ExternalPlayerAdapter::setSpeed(double s){return std::isfinite(s)&&s>=.25&&s<=4;}bool ExternalPlayerAdapter::setVolume(int v){return v>=0&&v<=100;}bool ExternalPlayerAdapter::stop(){state_=EngineState::Stopped;return true;}bool ExternalPlayerAdapter::isPlaying()const{return state_==EngineState::Playing;}EngineState ExternalPlayerAdapter::state()const{return state_;}bool ExternalPlayerAdapter::supports(EngineCapability c)const{return c==EngineCapability::Pause||c==EngineCapability::Seek||c==EngineCapability::Speed||c==EngineCapability::Volume;}MediaEngineInfo ExternalPlayerAdapter::info()const{MediaEngineInfo i;i.backend=EngineBackend::ExternalDevelopment;i.name="ffplay development adapter";i.version="system";i.available=true;i.standalone=false;i.notes={"Development-only adapter; final releases must bundle a native engine."};return i;}std::unique_ptr<PlaybackEngine>MediaEngineFactory::createDevelopmentEngine(){return std::make_unique<ExternalPlayerAdapter>();}std::unique_ptr<PlaybackEngine>MediaEngineFactory::createBundledEngine(){return nullptr;}std::unique_ptr<PlaybackEngine>MediaEngineFactory::createBestAvailableEngine(){return createDevelopmentEngine();}
 PlaybackState sanitizePlaybackState(PlaybackState s,std::int64_t d){s.positionMs=std::max<std::int64_t>(0,s.positionMs);if(d>0)s.positionMs=std::min(s.positionMs,d);if(!std::isfinite(s.speed))s.speed=1;s.speed=std::clamp(s.speed,.25,4.0);s.volume=std::clamp(s.volume,0,100);return s;}bool PlaybackController::load(const std::string&p,std::int64_t d){if(p.empty()||d<0)return false;path_=p;durationMs_=d;positionMs_=0;playing_=false;return true;}bool PlaybackController::play(){if(path_.empty())return false;playing_=true;return true;}bool PlaybackController::pause(){if(!playing_)return false;playing_=false;return true;}bool PlaybackController::stop(){if(path_.empty())return false;playing_=false;positionMs_=0;return true;}bool PlaybackController::seek(std::int64_t p){if(path_.empty()||p<0)return false;positionMs_=durationMs_?std::min(p,durationMs_):p;return true;}bool PlaybackController::setSpeed(double s){if(!std::isfinite(s))s=1;if(s<.25||s>4)return false;speed_=s;return true;}bool PlaybackController::setVolume(int v){if(v<0||v>100)return false;volume_=v;return true;}const std::string&PlaybackController::path()const{return path_;}std::int64_t PlaybackController::positionMs()const{return positionMs_;}double PlaybackController::speed()const{return speed_;}int PlaybackController::volume()const{return volume_;}bool PlaybackController::playing()const{return playing_;}

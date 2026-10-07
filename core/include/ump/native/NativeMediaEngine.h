@@ -1,5 +1,6 @@
 #pragma once
 #include "ump/FfmpegMediaSession.h"
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -22,8 +23,12 @@ struct NativeEngineInfo {
     bool standalone{false}, available{false}, hardwareDecode{false};
 };
 
-class VideoOutput { public: virtual ~VideoOutput() = default; virtual bool present(const FfmpegDecodedFrame&) = 0; };
-class AudioOutput { public: virtual ~AudioOutput() = default; virtual bool write(const FfmpegDecodedFrame&) = 0; };
+class VideoOutput { public: virtual ~VideoOutput() = default; virtual bool present(const FfmpegDecodedFrame&) = 0; virtual void reset() {} };
+class AudioOutput { public: virtual ~AudioOutput() = default; virtual bool write(const FfmpegDecodedFrame&) = 0; virtual void reset() {};
+    // Returns the media position currently represented by the audio device clock,
+    // or a negative value when the output cannot provide one.
+    virtual std::int64_t clockPositionUs() const { return -1; }
+};
 
 class NativeMediaEngine final {
 public:
@@ -63,5 +68,11 @@ private:
     NativeEngineState state_{NativeEngineState::Closed};
     double speed_{1.0};
     std::string error_;
+
+    PlaybackClock clock_{};
+    std::chrono::steady_clock::time_point clockWall_{};
+    bool clockInitialized_{false};
+    bool pendingVideo_{false};
+    FfmpegDecodedFrame pendingVideoFrame_{};
 };
 } // namespace ump::native

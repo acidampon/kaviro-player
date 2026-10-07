@@ -1,0 +1,215 @@
+name: KAVIRO CI
+
+on:
+  push:
+    branches:
+      - main
+      - recovery-2026-10-06
+      - ci-build-infrastructure-2026-10-07
+  pull_request: {}
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  linux-core:
+    name: Linux core
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev
+      - name: Configure
+        run: >
+          cmake -S . -B build/linux-core -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DUMP_BUILD_TESTS=ON
+          -DKAVIRO_FFMPEG_NATIVE=OFF
+      - name: Build
+        run: cmake --build build/linux-core --parallel
+      - name: Test
+        working-directory: build/linux-core
+        run: ctest --output-on-failure
+
+  linux-ffmpeg-boundary:
+    name: Linux FFmpeg native boundary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ pkg-config libsqlite3-dev xz-utils gnupg wget nasm ffmpeg
+      - name: Fetch and verify pinned FFmpeg source
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '\r\n' < ci/ffmpeg-version.txt)"
+          test "$VERSION" = "9.0.2"
+          mkdir -p build/ffmpeg-src
+          cd build/ffmpeg-src
+          wget -q "https://ffmpeg.org/releases/ffmpeg-$VERSION.tar.xz"
+          wget -q "https://ffmpeg.org/releases/ffmpeg-$VERSION.tar.xz.asc"
+          wget -q "https://ffmpeg.org/ffmpeg-devel.asc"
+          gpg --batch --import ffmpeg-devel.asc
+          gpg --batch --verify "ffmpeg-$VERSION.tar.xz.asc" "ffmpeg-$VERSION.tar.xz"
+          tar -xf "ffmpeg-$VERSION.tar.xz"
+          echo "FFMPEG_VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Build pinned FFmpeg development libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "build/ffmpeg-src/ffmpeg-$FFMPEG_VERSION"
+          ./configure --prefix="$GITHUB_WORKSPACE/build/ffmpeg-prefix" --disable-programs --disable-doc --disable-debug --disable-static --enable-shared
+          make -j"$(nproc)"
+          make install
+
+      - name: Configure native FFmpeg build
+        shell: bash
+        run: |
+          export PKG_CONFIG_PATH="$GITHUB_WORKSPACE/build/ffmpeg-prefix/lib/pkgconfig:$PKG_CONFIG_PATH"
+          cmake -S . -B build/linux-ffmpeg -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DUMP_BUILD_TESTS=ON \
+            -DKAVIRO_FFMPEG_NATIVE=ON
+
+      - name: Build native FFmpeg boundary
+        run: cmake --build build/linux-ffmpeg --parallel
+      - name: Test native boundary
+        working-directory: build/linux-ffmpeg
+        run: ctest --output-on-failure
+      - name: Generate deterministic decode fixture
+        run: |
+          mkdir -p build/fixtures
+          ffmpeg -hide_banner -loglevel error -y             -f lavfi -i "testsrc2=size=320x240:rate=24"             -f lavfi -i "sine=frequency=1000:sample_rate=48000"             -f lavfi -i "sine=frequency=440:sample_rate=48000"             -t 2 -map 0:v:0 -map 1:a:0 -map 2:a:0             -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest             build/fixtures/smoke.mp4
+      - name: Run native decode smoke
+        run: ./build/linux-ffmpeg/kaviro_native_decode_smoke build/fixtures/smoke.mp4
+
+  windows-core:
+    name: Windows core
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install SQLite3
+        shell: pwsh
+        run: vcpkg install sqlite3:x64-windows
+      - name: Configure
+        shell: pwsh
+        run: >
+          cmake -S . -B build/windows-core
+          -G "Visual Studio 17 2022"
+          -A x64
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DUMP_BUILD_TESTS=ON
+          -DKAVIRO_FFMPEG_NATIVE=OFF
+      - name: Build
+        run: cmake --build build/windows-core --config Release --parallel
+      - name: Test
+        working-directory: build/windows-core
+        run: ctest -C Release --output-on-failure
+
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Android build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nasm
+      - name: Install Android toolchain
+        shell: bash
+        run: |
+          SDKMANAGER="$(find "${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMANAGER"
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          set -o pipefail
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0" "cmake;3.31.6" "ndk;28.2.13676358"
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.6.0"
+      - name: Fetch and verify pinned FFmpeg source
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '\r\n' < ci/ffmpeg-version.txt)"
+          mkdir -p build/ffmpeg-src
+          cd build/ffmpeg-src
+          wget -q "https://ffmpeg.org/releases/ffmpeg-$VERSION.tar.xz"
+          wget -q "https://ffmpeg.org/releases/ffmpeg-$VERSION.tar.xz.asc"
+          wget -q "https://ffmpeg.org/ffmpeg-devel.asc"
+          gpg --batch --import ffmpeg-devel.asc
+          gpg --batch --verify "ffmpeg-$VERSION.tar.xz.asc" "ffmpeg-$VERSION.tar.xz"
+          tar -xf "ffmpeg-$VERSION.tar.xz"
+      - name: Build pinned FFmpeg for Android ABIs
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '\r\n' < ci/ffmpeg-version.txt)"
+          NDK="$(find "$ANDROID_HOME/ndk" -maxdepth 1 -mindepth 1 -type d -name "28.2.*" -print -quit)"
+          test -n "$NDK"
+          TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
+          SRC="$GITHUB_WORKSPACE/build/ffmpeg-src/ffmpeg-$VERSION"
+          test -d "$SRC"
+          for ABI in arm64-v8a x86_64; do
+            case "$ABI" in
+              arm64-v8a) TARGET=aarch64-linux-android; ARCH=aarch64 ;;
+              x86_64) TARGET=x86_64-linux-android; ARCH=x86_64 ;;
+            esac
+            PREFIX="$GITHUB_WORKSPACE/android/app/src/main/jniLibs/$ABI"
+            HEADER_PREFIX="$GITHUB_WORKSPACE/android/app/src/main/ffmpeg/include"
+            BUILD="$GITHUB_WORKSPACE/build/ffmpeg-android-$ABI"
+            rm -rf "$BUILD" "$PREFIX"
+            mkdir -p "$BUILD" "$PREFIX"
+            cd "$SRC"
+            make distclean >/dev/null 2>&1 || true
+            ./configure \
+              --prefix="$BUILD/prefix" \
+              --target-os=android \
+              --enable-cross-compile \
+              --arch="$ARCH" \
+              --cc="$TOOLCHAIN/bin/${TARGET}26-clang" \
+              --cxx="$TOOLCHAIN/bin/${TARGET}26-clang++" \
+              --strip="$TOOLCHAIN/bin/llvm-strip" \
+              --disable-programs \
+              --disable-doc \
+              --disable-debug \
+              --disable-static \
+              --enable-shared \
+              --disable-network \
+              --extra-ldflags="-Wl,-z,max-page-size=16384"
+            make -j"$(nproc)"
+            make install
+            mkdir -p "$HEADER_PREFIX"
+            cp -R "$BUILD/prefix/include/." "$HEADER_PREFIX/"
+            cp -L "$(find "$BUILD/prefix" -name "libavutil.so" -print -quit)" "$PREFIX/libavutil.so.61"
+            cp -L "$(find "$BUILD/prefix" -name "libavcodec.so" -print -quit)" "$PREFIX/libavcodec.so.63"
+            cp -L "$(find "$BUILD/prefix" -name "libavformat.so" -print -quit)" "$PREFIX/libavformat.so.63"
+            cp -L "$(find "$BUILD/prefix" -name "libswresample.so" -print -quit)" "$PREFIX/libswresample.so.7"
+            cp -L "$(find "$BUILD/prefix" -name "libswscale.so" -print -quit)" "$PREFIX/libswscale.so.10"
+          done
+
+      - name: Assemble debug APK
+        working-directory: android
+        run: gradle :app:assembleDebug --no-daemon
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaviro-android-debug
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
