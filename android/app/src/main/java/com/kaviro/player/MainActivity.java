@@ -316,7 +316,6 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         }
 
         final Uri uri = data.getData();
-        final String selectedName = queryDisplayName(uri);
         try {
             final int takeFlags = data.getFlags() &
                     (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
@@ -327,8 +326,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         final String name = queryDisplayName(uri);
         if (requestCode == REQUEST_QUEUE_MEDIA) {
             playbackHandler.post(() -> {
-                final long duration = nativeDurationMs(nativePlayer);
-                addQueueItem(uri.toString(), name, duration);
+                addQueueItem(uri.toString(), name, 0);
                 runOnUiThread(() -> statusView.setText("Added to queue: " + name));
             });
         } else {
