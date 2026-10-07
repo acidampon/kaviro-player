@@ -121,6 +121,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Install Android build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nasm
       - name: Install Android toolchain
         shell: bash
         run: |
