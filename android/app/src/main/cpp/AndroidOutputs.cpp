@@ -84,6 +84,8 @@ void AndroidAudioOutput::closeLocked() {
     channels_ = 0;
 }
 
+void AndroidAudioOutput::reset() { close(); }
+
 void AndroidAudioOutput::close() {
     std::lock_guard<std::mutex> lock(mutex_);
     closeLocked();
@@ -133,6 +135,8 @@ bool AndroidVideoOutput::present(const ump::FfmpegDecodedFrame& frame) {
 
     return ANativeWindow_unlockAndPost(window_) == 0;
 }
+
+void AndroidVideoOutput::reset() { }
 
 void AndroidVideoOutput::close() {
     std::lock_guard<std::mutex> lock(mutex_);
