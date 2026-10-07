@@ -37,6 +37,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     private long nativePlayer;
     private TextView statusView;
     private TextView queueSummaryView;
+    private Button playPauseButton;
     private SurfaceView surfaceView;
     private HandlerThread playbackThread;
     private Handler playbackHandler;
@@ -63,6 +64,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         @Override public void run() {
             if (nativePlayer == 0) return;
             if (!userSeeking) updateTimeline();
+            updatePlaybackControls();
             if (currentUri != null && System.currentTimeMillis() - lastPositionPersistMs >= 2000) {
                 persistCurrentPosition();
             }
@@ -100,10 +102,12 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                 if ("error".equals(state)) {
                     abandonAudioFocus();
                     runOnUiThread(() -> statusView.setText("Playback error: " + nativeLastError(nativePlayer)));
+                    updatePlaybackControls();
                 } else if ("ended".equals(state)) {
                     playbackHandler.post(() -> advanceQueueAfterEnd());
                 } else {
                     runOnUiThread(() -> statusView.setText("Playback stopped\nSession: " + state));
+                    updatePlaybackControls();
                 }
                 return;
             }
@@ -144,9 +148,9 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         open.setText("Open");
         open.setOnClickListener(v -> chooseMedia());
 
-        final Button playPause = new Button(this);
-        playPause.setText("Play / Pause");
-        playPause.setOnClickListener(v -> togglePlayback());
+        playPauseButton = new Button(this);
+        playPauseButton.setText("Play");
+        playPauseButton.setOnClickListener(v -> togglePlayback());
 
         final Button stop = new Button(this);
         stop.setText("Stop");
@@ -196,7 +200,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         video.setOnClickListener(v -> chooseTrack(false));
 
         controls.addView(open, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        controls.addView(playPause, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        controls.addView(playPauseButton, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         controls.addView(stop, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         controls.addView(audio, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         controls.addView(video, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
@@ -239,11 +243,28 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         queueSummaryView.setPadding(16, 4, 16, 12);
         root.addView(queueSummaryView);
         updateQueueSummary();
+        updatePlaybackControls();
 
         setContentView(root);
         playbackHandler.post(timelineTask);
     }
 
+
+    private void updatePlaybackControls() {
+        if (playPauseButton == null || nativePlayer == 0) return;
+        final String state = nativeState(nativePlayer);
+        final String label;
+        if ("playing".equals(state) && playing) {
+            label = "Pause";
+        } else if ("ended".equals(state)) {
+            label = "Replay";
+        } else {
+            label = "Play";
+        }
+        runOnUiThread(() -> {
+            if (playPauseButton != null) playPauseButton.setText(label);
+        });
+    }
 
     private void updateQueueSummary() {
         if (queueSummaryView == null) return;
