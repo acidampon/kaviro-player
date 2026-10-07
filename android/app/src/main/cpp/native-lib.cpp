@@ -158,6 +158,31 @@ Java_com_kaviro_player_MainActivity_nativePump(
 
 
 extern "C" JNIEXPORT jobjectArray JNICALL
+Java_com_kaviro_player_MainActivity_nativeVideoTracks(JNIEnv* env, jclass, jlong handle) {
+    auto* player = fromHandle(handle);
+    if (player == nullptr) return nullptr;
+    std::lock_guard<std::mutex> lock(player->mutex);
+    const auto tracks = player->engine.tracks();
+    jclass stringClass = env->FindClass("java/lang/String");
+    if (stringClass == nullptr) return nullptr;
+    int count = 0;
+    for (const auto& t : tracks) if (t.type == ump::FfmpegStreamType::Video) ++count;
+    jobjectArray result = env->NewObjectArray(count, stringClass, nullptr);
+    if (result == nullptr) return nullptr;
+    int out = 0;
+    for (const auto& t : tracks) {
+        if (t.type != ump::FfmpegStreamType::Video) continue;
+        std::string label = std::to_string(t.streamIndex) + "\t" + (t.title.empty() ? t.language : t.title);
+        if (label.back() == "\t"[0]) label += "Video track";
+        if (t.selected) label = "[Selected] " + label;
+        jstring item = env->NewStringUTF(label.c_str());
+        env->SetObjectArrayElement(result, out++, item);
+        env->DeleteLocalRef(item);
+    }
+    return result;
+}
+
+extern "C" JNIEXPORT jobjectArray JNICALL
 Java_com_kaviro_player_MainActivity_nativeAudioTracks(JNIEnv* env, jclass, jlong handle) {
     auto* player = fromHandle(handle);
     if (player == nullptr) return nullptr;
