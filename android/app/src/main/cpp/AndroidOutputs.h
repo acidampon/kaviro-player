@@ -17,6 +17,7 @@ public:
     AndroidAudioOutput& operator=(const AndroidAudioOutput&) = delete;
 
     bool write(const ump::FfmpegDecodedFrame& frame) override;
+    void reset() override;
     void close();
 
 private:
@@ -38,6 +39,7 @@ public:
 
     void setWindow(ANativeWindow* window);
     bool present(const ump::FfmpegDecodedFrame& frame) override;
+    void reset() override;
     void close();
 
 private:
