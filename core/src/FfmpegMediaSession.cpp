@@ -136,10 +136,22 @@ bool copyDecodedFrame(const AVFrame* frame,
         }
 
         const std::size_t bytesPerSample = sizeof(std::int16_t);
-        const std::size_t bytes =
-            static_cast<std::size_t>(outputSamples) *
-            static_cast<std::size_t>(channels) * bytesPerSample;
-        if (bytes > static_cast<std::size_t>(maxBytes)) {
+        const auto maxBytesSize = static_cast<std::size_t>(maxBytes);
+        const auto sampleCount = static_cast<std::size_t>(outputSamples);
+        const auto channelCount = static_cast<std::size_t>(channels);
+        if (channelCount != 0 &&
+            sampleCount > maxBytesSize / channelCount) {
+            swr_free(&swr);
+            return false;
+        }
+        const auto samplesTimesChannels = sampleCount * channelCount;
+        if (bytesPerSample != 0 &&
+            samplesTimesChannels > maxBytesSize / bytesPerSample) {
+            swr_free(&swr);
+            return false;
+        }
+        const std::size_t bytes = samplesTimesChannels * bytesPerSample;
+        if (bytes > maxBytesSize) {
             swr_free(&swr);
             return false;
         }
@@ -182,10 +194,17 @@ bool copyDecodedFrame(const AVFrame* frame,
         return false;
     }
 
-    const std::size_t rgbaBytes =
-        static_cast<std::size_t>(frame->width) *
-        static_cast<std::size_t>(frame->height) * 4U;
-    if (rgbaBytes > static_cast<std::size_t>(maxBytes)) return false;
+    const auto width = static_cast<std::size_t>(frame->width);
+    const auto height = static_cast<std::size_t>(frame->height);
+    const auto maxBytesSize = static_cast<std::size_t>(maxBytes);
+    if (height != 0 && width > maxBytesSize / height) return false;
+    const auto pixelCount = width * height;
+    if (4U != 0 && pixelCount > maxBytesSize / 4U) return false;
+    const std::size_t rgbaBytes = pixelCount * 4U;
+    if (rgbaBytes > maxBytesSize) return false;
+    if (width > static_cast<std::size_t>(std::numeric_limits<int>::max()) / 4U) {
+        return false;
+    }
 
     SwsContext* sws = sws_getContext(
         frame->width,
