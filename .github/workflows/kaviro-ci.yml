@@ -192,11 +192,11 @@ jobs:
             make install
             mkdir -p "$HEADER_PREFIX"
             cp -R "$BUILD/prefix/include/." "$HEADER_PREFIX/"
-            cp -L "$(readlink -f "$BUILD/prefix/lib/libavutil.so.61")" "$PREFIX/libavutil.so.61"
-            cp -L "$(readlink -f "$BUILD/prefix/lib/libavcodec.so.63")" "$PREFIX/libavcodec.so.63"
-            cp -L "$(readlink -f "$BUILD/prefix/lib/libavformat.so.63")" "$PREFIX/libavformat.so.63"
-            cp -L "$(readlink -f "$BUILD/prefix/lib/libswresample.so.7")" "$PREFIX/libswresample.so.7"
-            cp -L "$(readlink -f "$BUILD/prefix/lib/libswscale.so.10")" "$PREFIX/libswscale.so.10"
+            cp -L "$(find "$BUILD/prefix/lib" -maxdepth 1 -name 'libavutil.so.*' -print -quit)" "$PREFIX/libavutil.so.61"
+            cp -L "$(find "$BUILD/prefix/lib" -maxdepth 1 -name 'libavcodec.so.*' -print -quit)" "$PREFIX/libavcodec.so.63"
+            cp -L "$(find "$BUILD/prefix/lib" -maxdepth 1 -name 'libavformat.so.*' -print -quit)" "$PREFIX/libavformat.so.63"
+            cp -L "$(find "$BUILD/prefix/lib" -maxdepth 1 -name 'libswresample.so.*' -print -quit)" "$PREFIX/libswresample.so.7"
+            cp -L "$(find "$BUILD/prefix/lib" -maxdepth 1 -name 'libswscale.so.*' -print -quit)" "$PREFIX/libswscale.so.10"
           done
 
       - name: Assemble debug APK
