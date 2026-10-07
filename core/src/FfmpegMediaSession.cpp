@@ -383,6 +383,13 @@ void FfmpegMediaSession::close() {
 }
 
 bool FfmpegMediaSession::isOpen() const { return open_; }
+bool FfmpegMediaSession::atEnd() const {
+#if defined(KAVIRO_FFMPEG_NATIVE)
+    return open_ && impl_ && impl_->demuxEof;
+#else
+    return false;
+#endif
+}
 std::string FfmpegMediaSession::lastError() const { return error_; }
 const std::vector<FfmpegStreamInfo>& FfmpegMediaSession::streams() const { return streams_; }
 
