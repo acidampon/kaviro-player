@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <cstdio>
 #include <mutex>
 #include <string>
 
@@ -66,6 +67,17 @@ Java_com_kaviro_player_MainActivity_nativeOpen(
     const bool opened = player->engine.open(std::filesystem::path(rawPath), true);
     env->ReleaseStringUTFChars(path, rawPath);
     return opened ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_kaviro_player_MainActivity_nativeOpenFd(
+    JNIEnv*, jclass, jlong handle, jint fd) {
+    auto* player = fromHandle(handle);
+    if (player == nullptr || fd < 0) return JNI_FALSE;
+
+    const std::string procPath = std::string("/proc/self/fd/") + std::to_string(fd);
+    std::lock_guard<std::mutex> lock(player->mutex);
+    return player->engine.open(std::filesystem::path(procPath), true) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
