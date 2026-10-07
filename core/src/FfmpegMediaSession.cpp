@@ -563,7 +563,7 @@ bool FfmpegMediaSession::standaloneReady() const {
 PlaybackClock advancePlaybackClock(PlaybackClock c, std::int64_t elapsedUs) {
     if (elapsedUs <= 0 || c.paused) return c;
     if (!std::isfinite(c.speed)) c.speed = 1.0;
-    c.speed = std::clamp(c.speed, 0.25, 4.0);
+    c.speed = std::clamp(c.speed, 0.25, 16.0);
     const long double next =
         static_cast<long double>(c.mediaUs) +
         static_cast<long double>(elapsedUs) * c.speed;
