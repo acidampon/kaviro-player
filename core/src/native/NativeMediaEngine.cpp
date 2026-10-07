@@ -194,11 +194,12 @@ double NativeMediaEngine::speed() const noexcept {
 bool NativeMediaEngine::selectAudioTrack(int streamIndex) {
     if (!session_.selectAudioTrack(streamIndex)) {
         error_ = session_.lastError();
-        if (session_.isOpen()) {
-            state_ = NativeEngineState::Error;
-        }
+        if (session_.isOpen()) state_ = NativeEngineState::Error;
         return false;
     }
+    if (audioOutput_ != nullptr) audioOutput_->reset();
+    pendingVideo_ = false;
+    pendingVideoFrame_ = {};
     error_.clear();
     return true;
 }
@@ -206,11 +207,12 @@ bool NativeMediaEngine::selectAudioTrack(int streamIndex) {
 bool NativeMediaEngine::selectVideoTrack(int streamIndex) {
     if (!session_.selectVideoTrack(streamIndex)) {
         error_ = session_.lastError();
-        if (session_.isOpen()) {
-            state_ = NativeEngineState::Error;
-        }
+        if (session_.isOpen()) state_ = NativeEngineState::Error;
         return false;
     }
+    if (videoOutput_ != nullptr) videoOutput_->reset();
+    pendingVideo_ = false;
+    pendingVideoFrame_ = {};
     error_.clear();
     return true;
 }
@@ -290,7 +292,12 @@ bool NativeMediaEngine::pump(std::size_t maxFrames) {
 
     if (pendingVideo_) {
         const auto delta = clockDeltaUs(clock_, pendingVideoFrame_.ptsUs);
-        if (delta <= kVideoEarlyToleranceUs) {
+        if (delta < -kVideoLateToleranceUs) {
+            // The frame was held because it was early, but the caller did not
+            // pump again soon enough. Never present a now-stale frame.
+            pendingVideo_ = false;
+            pendingVideoFrame_ = {};
+        } else if (delta <= kVideoEarlyToleranceUs) {
             if (videoOutput_ != nullptr && !videoOutput_->present(pendingVideoFrame_)) {
                 error_ = "Video output rejected a decoded frame";
                 state_ = NativeEngineState::Error;
