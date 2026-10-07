@@ -191,3 +191,5 @@ Java_com_kaviro_player_MainActivity_nativeEngineStatus(JNIEnv* env, jclass) {
         ", hardware=" + (info.hardwareDecode ? "active" : "inactive");
     return env->NewStringUTF(status.c_str());
 }
+
+// Track-selection JNI boundary is intentionally kept minimal; UI uses native track enumeration when available.
