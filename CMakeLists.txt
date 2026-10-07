@@ -1,11 +1,18 @@
 cmake_minimum_required(VERSION 3.24)
-project(KAVIROPlayer VERSION 0.7.0 LANGUAGES CXX)
+project(KAVIROPlayer VERSION 0.7.3 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(UMP_BUILD_TESTS "Build core tests" ON)
+option(KAVIRO_FFMPEG_NATIVE "Build against native FFmpeg development libraries" OFF)
+option(KAVIRO_REQUIRE_NATIVE_FFMPEG "Fail release configuration when native FFmpeg is unavailable" ON)
+
+# A release build must never silently ship the non-decoding boundary stub.
+if(CMAKE_BUILD_TYPE STREQUAL "Release" AND KAVIRO_REQUIRE_NATIVE_FFMPEG)
+  set(KAVIRO_FFMPEG_NATIVE ON CACHE BOOL "" FORCE)
+endif()
 
 add_library(ump_core STATIC
     core/src/MediaItem.cpp
@@ -33,6 +40,15 @@ target_compile_features(ump_core PUBLIC cxx_std_20)
 
 find_package(SQLite3 REQUIRED)
 target_link_libraries(ump_core PUBLIC SQLite::SQLite3)
+
+if(KAVIRO_FFMPEG_NATIVE)
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET libavformat libavcodec libavutil)
+  target_compile_definitions(ump_core PUBLIC KAVIRO_FFMPEG_NATIVE=1)
+  target_link_libraries(ump_core PUBLIC PkgConfig::FFMPEG)
+elseif(CMAKE_BUILD_TYPE STREQUAL "Release" AND KAVIRO_REQUIRE_NATIVE_FFMPEG)
+  message(FATAL_ERROR "KAVIRO Release builds require native FFmpeg development libraries")
+endif()
 
 add_executable(kaviro_player app/main.cpp)
 target_link_libraries(kaviro_player PRIVATE ump_core)
