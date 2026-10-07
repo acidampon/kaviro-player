@@ -205,10 +205,14 @@ bool NativeMediaEngine::seekMs(std::int64_t positionMs) {
         : positionMs * 1000;
     clock_.wallUs = 0;
     clock_.speed = speed_;
-    clock_.paused = state_ != NativeEngineState::Playing;
+    const bool wasPlaying = state_ == NativeEngineState::Playing;
+    clock_.paused = !wasPlaying;
     clockWall_ = std::chrono::steady_clock::now();
     clockInitialized_ = true;
-    if (state_ == NativeEngineState::Error) {
+    // A successful seek is a new playback position. In particular, seeking
+    // from natural EOF must leave Ended so Play resumes from the requested
+    // position rather than treating the next Play as an explicit replay.
+    if (!wasPlaying) {
         state_ = NativeEngineState::Paused;
     }
     return true;
