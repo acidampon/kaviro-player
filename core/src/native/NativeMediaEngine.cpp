@@ -320,6 +320,16 @@ bool NativeMediaEngine::pump(std::size_t maxFrames) {
             return false;
         }
 
+        // A decoder can deliver frames after the wall-clock position has
+        // already moved well beyond their presentation timestamp. Presenting
+        // those stale frames makes playback visibly lag and can create a
+        // backlog. Drop only frames outside the explicit late tolerance;
+        // frames within tolerance are still presented to avoid unnecessary
+        // cadence loss.
+        if (delta < -kVideoLateToleranceUs) {
+            return true;
+        }
+
         if (videoOutput_ == nullptr) return true;
         if (!videoOutput_->present(frame)) {
             error_ = "Video output rejected a decoded frame";
