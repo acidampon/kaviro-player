@@ -101,6 +101,26 @@ bool NativeMediaEngine::play() {
         return false;
     }
 
+    // Natural EOF leaves the demuxer at end-of-stream. Treat Play from Ended
+    // as an explicit restart from the beginning rather than immediately
+    // returning to Ended on the next pump.
+    if (state_ == NativeEngineState::Ended) {
+        if (!session_.seekMs(0)) {
+            error_ = session_.lastError();
+            state_ = NativeEngineState::Error;
+            return false;
+        }
+        if (videoOutput_ != nullptr) videoOutput_->reset();
+        if (audioOutput_ != nullptr) audioOutput_->reset();
+        pendingVideo_ = false;
+        pendingVideoFrame_ = {};
+        clock_ = {};
+        clock_.speed = speed_;
+        clock_.paused = true;
+        clockInitialized_ = true;
+        error_.clear();
+    }
+
     const auto now = std::chrono::steady_clock::now();
     clock_.speed = speed_;
     clock_.paused = false;
