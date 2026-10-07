@@ -43,7 +43,40 @@ struct FfmpegMediaSession::Impl {};
 #endif
 
 FfmpegMediaSession::FfmpegMediaSession() : impl_(new Impl) {}
+
 FfmpegMediaSession::~FfmpegMediaSession() { close(); delete impl_; }
+
+FfmpegMediaSession::FfmpegMediaSession(FfmpegMediaSession&& other) noexcept
+    : impl_(other.impl_),
+      streams_(std::move(other.streams_)),
+      error_(std::move(other.error_)),
+      recovery_(other.recovery_),
+      open_(other.open_) {
+    other.impl_ = new Impl;
+    other.streams_.clear();
+    other.error_.clear();
+    other.recovery_ = FfmpegRecoveryOutcome::NotAttempted;
+    other.open_ = false;
+}
+
+FfmpegMediaSession& FfmpegMediaSession::operator=(FfmpegMediaSession&& other) noexcept {
+    if (this == &other) return *this;
+
+    close();
+    delete impl_;
+    impl_ = other.impl_;
+    streams_ = std::move(other.streams_);
+    error_ = std::move(other.error_);
+    recovery_ = other.recovery_;
+    open_ = other.open_;
+
+    other.impl_ = new Impl;
+    other.streams_.clear();
+    other.error_.clear();
+    other.recovery_ = FfmpegRecoveryOutcome::NotAttempted;
+    other.open_ = false;
+    return *this;
+}
 
 #if defined(KAVIRO_FFMPEG_NATIVE)
 
