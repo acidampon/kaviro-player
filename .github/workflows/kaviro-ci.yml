@@ -43,13 +43,39 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ pkg-config libsqlite3-dev libavformat-dev libavcodec-dev libavutil-dev
+          sudo apt-get install -y cmake ninja-build g++ pkg-config libsqlite3-dev xz-utils gnupg wget
+      - name: Fetch and verify pinned FFmpeg source
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '\r\n' < ci/ffmpeg-version.txt)"
+          test "$VERSION" = "9.0.2"
+          mkdir -p build/ffmpeg-src
+          cd build/ffmpeg-src
+          wget -q "https://ffmpeg.org/releases/ffmpeg-$VERSION.tar.xz"
+          wget -q "https://ffmpeg.org/releases/ffmpeg-$VERSION.tar.xz.asc"
+          wget -q "https://ffmpeg.org/ffmpeg-devel.asc"
+          gpg --batch --import ffmpeg-devel.asc
+          gpg --batch --verify "ffmpeg-$VERSION.tar.xz.asc" "ffmpeg-$VERSION.tar.xz"
+          tar -xf "ffmpeg-$VERSION.tar.xz"
+          echo "FFMPEG_VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Build pinned FFmpeg development libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "build/ffmpeg-src/ffmpeg-$FFMPEG_VERSION"
+          ./configure --prefix="$GITHUB_WORKSPACE/build/ffmpeg-prefix" --disable-programs --disable-doc --disable-debug --disable-static --enable-shared
+          make -j"$(nproc)"
+          make install
+
       - name: Configure native FFmpeg build
         run: >
           cmake -S . -B build/linux-ffmpeg -G Ninja
           -DCMAKE_BUILD_TYPE=Release
           -DUMP_BUILD_TESTS=ON
           -DKAVIRO_FFMPEG_NATIVE=ON
+          -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/build/ffmpeg-prefix"
       - name: Build native FFmpeg boundary
         run: cmake --build build/linux-ffmpeg --parallel
       - name: Test native boundary
