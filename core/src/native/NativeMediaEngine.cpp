@@ -105,6 +105,13 @@ bool NativeMediaEngine::play() {
     clock_.speed = speed_;
     clock_.paused = false;
     clockWall_ = now;
+    // Establish a valid monotonic wall-clock anchor immediately. This matters
+    // for audio-only media, which may not produce a video frame to initialize
+    // the playback clock later.
+    if (!clockInitialized_) {
+        clockInitialized_ = true;
+        clock_.wallUs = 0;
+    }
     state_ = NativeEngineState::Playing;
     return true;
 }
