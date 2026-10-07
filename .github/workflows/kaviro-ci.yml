@@ -192,7 +192,7 @@ jobs:
             make install
             mkdir -p "$HEADER_PREFIX"
             cp -R "$BUILD/prefix/include/." "$HEADER_PREFIX/"
-            cp -L "$(find "$BUILD/prefix/lib" -maxdepth 1 -name 'libavutil.so.*' -print -quit)" "$PREFIX/libavutil.so.61"
+            cp -L "$(find "$BUILD/prefix" -name 'libavutil.so.*' -print -quit)" "$PREFIX/libavutil.so.61"
             cp -L "$(find "$BUILD/prefix/lib" -maxdepth 1 -name 'libavcodec.so.*' -print -quit)" "$PREFIX/libavcodec.so.63"
             cp -L "$(find "$BUILD/prefix/lib" -maxdepth 1 -name 'libavformat.so.*' -print -quit)" "$PREFIX/libavformat.so.63"
             cp -L "$(find "$BUILD/prefix/lib" -maxdepth 1 -name 'libswresample.so.*' -print -quit)" "$PREFIX/libswresample.so.7"
