@@ -23,7 +23,7 @@ target_link_libraries(ump_core PUBLIC SQLite::SQLite3)
 
 if(KAVIRO_FFMPEG_NATIVE)
   find_package(PkgConfig REQUIRED)
-  pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET libavformat libavcodec libavutil)
+  pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET libavformat libavcodec libavutil libswresample libswscale)
   target_compile_definitions(ump_core PUBLIC KAVIRO_FFMPEG_NATIVE=1)
   target_link_libraries(ump_core PUBLIC PkgConfig::FFMPEG)
 endif()
