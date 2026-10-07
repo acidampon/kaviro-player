@@ -144,6 +144,8 @@ bool NativeMediaEngine::seekMs(std::int64_t positionMs) {
     }
 
     error_.clear();
+    if (videoOutput_ != nullptr) videoOutput_->reset();
+    if (audioOutput_ != nullptr) audioOutput_->reset();
     pendingVideo_ = false;
     pendingVideoFrame_ = {};
     clock_.mediaUs = positionMs > std::numeric_limits<std::int64_t>::max() / 1000
