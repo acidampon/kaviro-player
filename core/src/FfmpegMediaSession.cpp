@@ -13,6 +13,8 @@ extern "C" {
 #include <libavutil/error.h>
 #include <libavutil/pixdesc.h>
 #include <libavutil/samplefmt.h>
+#include <libswresample/swresample.h>
+#include <libswscale/swscale.h>
 }
 #endif
 
@@ -94,70 +96,139 @@ bool copyDecodedFrame(const AVFrame* frame,
     output = {};
     output.type = type;
     output.ptsUs = ptsUs;
-    output.format = frame->format;
+
+    if (!frame || maxBytes <= 0) return false;
 
     if (type == FfmpegStreamType::Audio) {
-        output.sampleRate = frame->sample_rate;
-        output.channels = frame->ch_layout.nb_channels;
-        output.samples = frame->nb_samples;
-        const int bytesPerSample = av_get_bytes_per_sample(
-            static_cast<AVSampleFormat>(frame->format));
-        if (bytesPerSample <= 0) return false;
+        const int channels = frame->ch_layout.nb_channels;
+        if (frame->sample_rate <= 0 || channels <= 0 || frame->nb_samples <= 0)
+            return false;
 
-        const bool planar = av_sample_fmt_is_planar(
-            static_cast<AVSampleFormat>(frame->format)) != 0;
-        const int planeCount = planar ? std::max(1, frame->ch_layout.nb_channels) : 1;
-        const std::size_t bytesPerPlane =
-            static_cast<std::size_t>(frame->nb_samples) *
-            static_cast<std::size_t>(bytesPerSample) *
-            static_cast<std::size_t>(planar ? 1 : std::max(1, frame->ch_layout.nb_channels));
+        AVChannelLayout outputLayout{};
+        if (av_channel_layout_copy(&outputLayout, &frame->ch_layout) < 0)
+            return false;
 
-        if (bytesPerPlane > static_cast<std::size_t>(maxBytes)) return false;
-        for (int plane = 0; plane < planeCount && plane < AV_NUM_DATA_POINTERS; ++plane) {
-            if (!frame->extended_data[plane]) continue;
-            if (bytesPerPlane > static_cast<std::size_t>(maxBytes) - output.ownedData.size())
-                return false;
-            const auto oldSize = output.ownedData.size();
-            output.ownedData.resize(oldSize + bytesPerPlane);
-            std::memcpy(output.ownedData.data() + oldSize,
-                        frame->extended_data[plane], bytesPerPlane);
-            output.planes.push_back({
-                output.ownedData.data() + oldSize,
-                static_cast<int>(bytesPerPlane),
-                frame->nb_samples,
-                1
-            });
+        SwrContext* swr = nullptr;
+        const int initRc = swr_alloc_set_opts2(
+            &swr,
+            &outputLayout,
+            AV_SAMPLE_FMT_S16,
+            frame->sample_rate,
+            &frame->ch_layout,
+            static_cast<AVSampleFormat>(frame->format),
+            frame->sample_rate,
+            0,
+            nullptr);
+        av_channel_layout_uninit(&outputLayout);
+        if (initRc < 0 || !swr || swr_init(swr) < 0) {
+            swr_free(&swr);
+            return false;
         }
-        return !output.planes.empty();
+
+        const int outputSamples = static_cast<int>(av_rescale_rnd(
+            swr_get_delay(swr, frame->sample_rate) + frame->nb_samples,
+            frame->sample_rate,
+            frame->sample_rate,
+            AV_ROUND_UP));
+        if (outputSamples <= 0) {
+            swr_free(&swr);
+            return false;
+        }
+
+        const std::size_t bytesPerSample = sizeof(std::int16_t);
+        const std::size_t bytes =
+            static_cast<std::size_t>(outputSamples) *
+            static_cast<std::size_t>(channels) * bytesPerSample;
+        if (bytes > static_cast<std::size_t>(maxBytes)) {
+            swr_free(&swr);
+            return false;
+        }
+
+        output.ownedData.resize(bytes);
+        std::uint8_t* outPlanes[] = { output.ownedData.data() };
+        const int converted = swr_convert(
+            swr,
+            outPlanes,
+            outputSamples,
+            const_cast<const std::uint8_t**>(frame->extended_data),
+            frame->nb_samples);
+        swr_free(&swr);
+
+        if (converted <= 0) {
+            output.ownedData.clear();
+            return false;
+        }
+
+        output.sampleRate = frame->sample_rate;
+        output.channels = channels;
+        output.samples = converted;
+        output.format = AV_SAMPLE_FMT_S16;
+        output.normalized = true;
+        output.ownedData.resize(
+            static_cast<std::size_t>(converted) *
+            static_cast<std::size_t>(channels) * bytesPerSample);
+        output.planes.push_back({
+            output.ownedData.data(),
+            channels * static_cast<int>(bytesPerSample),
+            converted,
+            1
+        });
+        return true;
+    }
+
+    if (type != FfmpegStreamType::Video ||
+        frame->width <= 0 || frame->height <= 0 ||
+        frame->format < 0) {
+        return false;
+    }
+
+    const std::size_t rgbaBytes =
+        static_cast<std::size_t>(frame->width) *
+        static_cast<std::size_t>(frame->height) * 4U;
+    if (rgbaBytes > static_cast<std::size_t>(maxBytes)) return false;
+
+    SwsContext* sws = sws_getContext(
+        frame->width,
+        frame->height,
+        static_cast<AVPixelFormat>(frame->format),
+        frame->width,
+        frame->height,
+        AV_PIX_FMT_RGBA,
+        SWS_BILINEAR,
+        nullptr,
+        nullptr,
+        nullptr);
+    if (!sws) return false;
+
+    output.ownedData.resize(rgbaBytes);
+    std::uint8_t* destination[] = { output.ownedData.data() };
+    const int destinationLinesize[] = { frame->width * 4 };
+    const int scaled = sws_scale(
+        sws,
+        frame->data,
+        frame->linesize,
+        0,
+        frame->height,
+        destination,
+        destinationLinesize);
+    sws_freeContext(sws);
+
+    if (scaled != frame->height) {
+        output.ownedData.clear();
+        return false;
     }
 
     output.width = frame->width;
     output.height = frame->height;
-    const auto* desc = av_pix_fmt_desc_get(static_cast<AVPixelFormat>(frame->format));
-    if (!desc) return false;
-
-    for (int plane = 0; plane < AV_NUM_DATA_POINTERS; ++plane) {
-        if (!frame->data[plane] || frame->linesize[plane] == 0) continue;
-        int planeWidth = frame->width;
-        int planeHeight = frame->height;
-        if (plane > 0 && desc->nb_components >= 3 &&
-            !(desc->flags & AV_PIX_FMT_FLAG_RGB)) {
-            planeWidth = (planeWidth + (1 << desc->log2_chroma_w) - 1) >>
-                         desc->log2_chroma_w;
-            planeHeight = (planeHeight + (1 << desc->log2_chroma_h) - 1) >>
-                          desc->log2_chroma_h;
-        }
-        const std::size_t before = output.ownedData.size();
-        if (!appendPlane(output, frame->data[plane], frame->linesize[plane],
-                         planeHeight, maxBytes))
-            return false;
-        if (!output.planes.empty()) {
-            output.planes.back().width = planeWidth;
-            output.planes.back().height = planeHeight;
-        }
-        if (output.ownedData.size() < before) return false;
-    }
-    return !output.planes.empty();
+    output.format = AV_PIX_FMT_RGBA;
+    output.normalized = true;
+    output.planes.push_back({
+        output.ownedData.data(),
+        frame->width * 4,
+        frame->width,
+        frame->height
+    });
+    return true;
 }
 
 } // namespace
