@@ -5,9 +5,8 @@ on:
     branches:
       - main
       - recovery-2026-10-06
-      - ci-build-infrastructure-2026-10-07
-  pull_request:
-  workflow_dispatch:
+  pull_request: {}
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -19,19 +18,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev
-
       - name: Configure
-        run: |
-          cmake -S . -B build/linux-core -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DUMP_BUILD_TESTS=ON             -DKAVIRO_FFMPEG_NATIVE=OFF
-
+        run: >
+          cmake -S . -B build/linux-core -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DUMP_BUILD_TESTS=ON
+          -DKAVIRO_FFMPEG_NATIVE=OFF
       - name: Build
         run: cmake --build build/linux-core --parallel
-
       - name: Test
         working-directory: build/linux-core
         run: ctest --output-on-failure
@@ -42,19 +40,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ pkg-config libsqlite3-dev             libavformat-dev libavcodec-dev libavutil-dev
-
+          sudo apt-get install -y cmake ninja-build g++ pkg-config libsqlite3-dev libavformat-dev libavcodec-dev libavutil-dev
       - name: Configure native FFmpeg build
-        run: |
-          cmake -S . -B build/linux-ffmpeg -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DUMP_BUILD_TESTS=ON             -DKAVIRO_FFMPEG_NATIVE=ON
-
+        run: >
+          cmake -S . -B build/linux-ffmpeg -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DUMP_BUILD_TESTS=ON
+          -DKAVIRO_FFMPEG_NATIVE=ON
       - name: Build native FFmpeg boundary
         run: cmake --build build/linux-ffmpeg --parallel
-
       - name: Test native boundary
         working-directory: build/linux-ffmpeg
         run: ctest --output-on-failure
@@ -65,46 +62,37 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Install SQLite3
         shell: pwsh
-        run: |
-          vcpkg install sqlite3:x64-windows
-
+        run: vcpkg install sqlite3:x64-windows
       - name: Configure
         shell: pwsh
-        run: |
-          cmake -S . -B build/windows-core `
-            -G "Visual Studio 17 2022" `
-            -A x64 `
-            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
-            -DUMP_BUILD_TESTS=ON `
-            -DKAVIRO_FFMPEG_NATIVE=OFF
-
+        run: >
+          cmake -S . -B build/windows-core
+          -G "Visual Studio 17 2022"
+          -A x64
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DUMP_BUILD_TESTS=ON
+          -DKAVIRO_FFMPEG_NATIVE=OFF
       - name: Build
         run: cmake --build build/windows-core --config Release --parallel
-
       - name: Test
         working-directory: build/windows-core
         run: ctest -C Release --output-on-failure
 
   android-readiness:
-    name: Android readiness gate
+    name: Android readiness
     runs-on: ubuntu-latest
-    if: hashFiles('android/settings.gradle', 'android/settings.gradle.kts', 'android/build.gradle', 'android/build.gradle.kts') != ''
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Android project detected
-        run: echo "Android project detected; dedicated Android build workflow will run after the module is wired to the KAVIRO native library."
-
-  android-not-yet-present:
-    name: Android project not present (informational)
-    runs-on: ubuntu-latest
-    if: hashFiles('android/settings.gradle', 'android/settings.gradle.kts', 'android/build.gradle', 'android/build.gradle.kts') == ''
-    steps:
-      - name: Report honest status
+      - name: Report Android project status
+        shell: bash
         run: |
-          echo "No Android Gradle project is present yet."
-          echo "This is intentionally informational; it does not claim an APK build."
+          if [ -f android/settings.gradle ] || [ -f android/settings.gradle.kts ]; then
+            echo "Android Gradle project detected."
+            echo "Dedicated APK build will be enabled when the Android module is wired to the KAVIRO native library."
+          else
+            echo "Android Gradle project is not present yet."
+            echo "This is an informational readiness check; it does not claim APK support."
+          fi
