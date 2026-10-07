@@ -253,7 +253,6 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     private void refreshPlaybackUi() {
         updatePlaybackControls();
         updateTimeline();
-        updateQueueSummary();
     }
 
     private void updatePlaybackControls() {
@@ -766,6 +765,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             runOnUiThread(this::updateTimeline);
         } catch (Exception e) {
             runOnUiThread(() -> statusView.setText("Open failed: " + e.getMessage()));
+            refreshPlaybackUi();
         }
     }
 
@@ -848,7 +848,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         statusView.setText(ok
                 ? "Stopped\nPosition: 0:00\nSession: " + nativeState(nativePlayer)
                 : "Stop failed: " + nativeLastError(nativePlayer));
-        updateTimeline();
+        refreshPlaybackUi();
     }
 
     private void togglePlayback() {
@@ -875,6 +875,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             }
         }
         statusView.setText("Session: " + nativeState(nativePlayer));
+        refreshPlaybackUi();
     }
 
     @Override
