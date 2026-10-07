@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - recovery-2026-10-06
+      - ci-build-infrastructure-2026-10-07
   pull_request: {}
   workflow_dispatch: {}
 
