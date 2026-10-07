@@ -13,6 +13,7 @@ import android.view.SurfaceView;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.SeekBar;
 import android.widget.TextView;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -29,6 +30,15 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     private HandlerThread playbackThread;
     private Handler playbackHandler;
     private boolean playing;
+    private SeekBar seekBar;
+    private boolean userSeeking;
+    private final Runnable timelineTask = new Runnable() {
+        @Override public void run() {
+            if (nativePlayer == 0) return;
+            if (!userSeeking) updateTimeline();
+            playbackHandler.postDelayed(this, 250);
+        }
+    };
 
     private static native long nativeCreate();
     private static native void nativeRelease(long handle);
@@ -38,6 +48,9 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     private static native boolean nativePlay(long handle);
     private static native boolean nativePause(long handle);
     private static native boolean nativePump(long handle, int maxFrames);
+    private static native boolean nativeSeekMs(long handle, long positionMs);
+    private static native long nativePositionMs(long handle);
+    private static native long nativeDurationMs(long handle);
     private static native String nativeState(long handle);
     private static native String nativeLastError(long handle);
     private static native String nativeEngineStatus();
@@ -88,6 +101,42 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         playPause.setText("Play / Pause");
         playPause.setOnClickListener(v -> togglePlayback());
 
+        seekBar = new SeekBar(this);
+        seekBar.setMax(1);
+        seekBar.setEnabled(false);
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {}
+
+            @Override public void onStartTrackingTouch(SeekBar bar) {
+                userSeeking = true;
+            }
+
+            @Override public void onStopTrackingTouch(SeekBar bar) {
+                userSeeking = false;
+                final long duration = nativeDurationMs(nativePlayer);
+                if (duration <= 0) {
+                    updateTimeline();
+                    return;
+                }
+                final long target = Math.min(duration, Integer.MAX_VALUE) == 0
+                        ? 0
+                        : Math.min(duration, Integer.MAX_VALUE) == bar.getMax()
+                            ? bar.getProgress()
+                            : (duration * bar.getProgress()) / bar.getMax();
+                final long clamped = Math.max(0, Math.min(duration, target));
+                final boolean ok = nativeSeekMs(nativePlayer, clamped);
+                if (!ok) {
+                    statusView.setText("Seek failed: " + nativeLastError(nativePlayer));
+                } else {
+                    updateTimeline();
+                    statusView.setText("Position: " + formatMs(clamped) +
+                            " / " + formatMs(duration) + "\nSession: " + nativeState(nativePlayer));
+                }
+            }
+        });
+        root.addView(seekBar, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
         controls.addView(open, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         controls.addView(playPause, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         root.addView(controls);
@@ -98,6 +147,37 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         root.addView(statusView);
 
         setContentView(root);
+        playbackHandler.post(timelineTask);
+    }
+
+    private void updateTimeline() {
+        if (nativePlayer == 0 || seekBar == null) return;
+        final long duration = nativeDurationMs(nativePlayer);
+        final long position = nativePositionMs(nativePlayer);
+        runOnUiThread(() -> {
+            if (seekBar == null || userSeeking) return;
+            if (duration <= 0) {
+                seekBar.setEnabled(false);
+                seekBar.setMax(1);
+                seekBar.setProgress(0);
+                return;
+            }
+            seekBar.setEnabled(true);
+            final int max = (int) Math.min(Integer.MAX_VALUE, duration);
+            seekBar.setMax(Math.max(1, max));
+            final int progress = (int) Math.min(seekBar.getMax(), Math.max(0, position));
+            seekBar.setProgress(progress);
+        });
+    }
+
+    private static String formatMs(long ms) {
+        long totalSeconds = Math.max(0, ms) / 1000;
+        long hours = totalSeconds / 3600;
+        long minutes = (totalSeconds % 3600) / 60;
+        long seconds = totalSeconds % 60;
+        return hours > 0
+                ? String.format(java.util.Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+                : String.format(java.util.Locale.US, "%d:%02d", minutes, seconds);
     }
 
     private void chooseMedia() {
@@ -125,6 +205,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                 if (opened) {
                     runOnUiThread(() -> statusView.setText(
                             "Opened selected media\nSession: " + nativeState(nativePlayer)));
+                    runOnUiThread(this::updateTimeline);
                     return;
                 }
             }
@@ -136,6 +217,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             runOnUiThread(() -> statusView.setText(
                     opened ? "Opened: " + localFile.getName() + "\nSession: " + nativeState(nativePlayer)
                            : "Open failed: " + nativeLastError(nativePlayer)));
+            runOnUiThread(this::updateTimeline);
         } catch (Exception e) {
             runOnUiThread(() -> statusView.setText("Open failed: " + e.getMessage()));
         }
