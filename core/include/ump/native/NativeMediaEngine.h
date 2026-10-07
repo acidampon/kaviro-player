@@ -23,8 +23,8 @@ struct NativeEngineInfo {
     bool standalone{false}, available{false}, hardwareDecode{false};
 };
 
-class VideoOutput { public: virtual ~VideoOutput() = default; virtual bool present(const FfmpegDecodedFrame&) = 0; };
-class AudioOutput { public: virtual ~AudioOutput() = default; virtual bool write(const FfmpegDecodedFrame&) = 0; };
+class VideoOutput { public: virtual ~VideoOutput() = default; virtual bool present(const FfmpegDecodedFrame&) = 0; virtual void reset() {} };
+class AudioOutput { public: virtual ~AudioOutput() = default; virtual bool write(const FfmpegDecodedFrame&) = 0; virtual void reset() {} };
 
 class NativeMediaEngine final {
 public:
