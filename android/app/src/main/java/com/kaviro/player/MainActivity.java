@@ -97,9 +97,12 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                 final String state = nativeState(nativePlayer);
                 playing = false;
                 if ("error".equals(state)) {
+                    abandonAudioFocus();
                     runOnUiThread(() -> statusView.setText("Playback error: " + nativeLastError(nativePlayer)));
+                } else if ("ended".equals(state)) {
+                    playbackHandler.post(() -> advanceQueueAfterEnd());
                 } else {
-                    runOnUiThread(() -> statusView.setText("Playback finished\nSession: " + state));
+                    runOnUiThread(() -> statusView.setText("Playback stopped\nSession: " + state));
                 }
                 return;
             }
@@ -235,6 +238,51 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         playbackHandler.post(timelineTask);
     }
 
+
+    private void advanceQueueAfterEnd() {
+        if (nativePlayer == 0) return;
+        final JSONArray items = loadItems(QUEUE_KEY);
+        if (items.length() == 0) {
+            abandonAudioFocus();
+            runOnUiThread(() -> statusView.setText(
+                    "Playback ended\nQueue is empty\nSession: " + nativeState(nativePlayer)));
+            return;
+        }
+
+        final JSONObject next = items.optJSONObject(0);
+        if (next == null) {
+            abandonAudioFocus();
+            runOnUiThread(() -> statusView.setText("Playback ended\nQueue item is invalid"));
+            return;
+        }
+
+        final String nextUri = next.optString("uri", null);
+        if (nextUri == null || nextUri.isEmpty()) {
+            removeQueueItem(next.optString("uri", null));
+            advanceQueueAfterEnd();
+            return;
+        }
+
+        removeQueueItem(nextUri);
+        openUri(Uri.parse(nextUri));
+        if (!requestAudioFocus()) {
+            runOnUiThread(() -> statusView.setText(
+                    "Next item opened but playback is waiting for audio focus\n" +
+                    "Session: " + nativeState(nativePlayer)));
+            return;
+        }
+        if (nativePlay(nativePlayer)) {
+            playing = true;
+            playbackHandler.post(pumpTask);
+            final String nextName = next.optString("name", "Next media");
+            runOnUiThread(() -> statusView.setText(
+                    "Playing next: " + nextName + "\nSession: " + nativeState(nativePlayer)));
+        } else {
+            abandonAudioFocus();
+            runOnUiThread(() -> statusView.setText(
+                    "Next item failed: " + nativeLastError(nativePlayer)));
+        }
+    }
 
     private void chooseTrack(boolean audio) {
         if (nativePlayer == 0) return;
