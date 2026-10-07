@@ -65,3 +65,9 @@ target_link_libraries(kaviro_android PRIVATE
     ${aaudio-lib}
     ${log-lib}
 )
+
+# Keep the app native library explicitly compatible with 16 KiB Android page-size devices.
+target_link_options(kaviro_android PRIVATE
+    "-Wl,-z,max-page-size=16384"
+    "-Wl,-z,common-page-size=16384"
+)
