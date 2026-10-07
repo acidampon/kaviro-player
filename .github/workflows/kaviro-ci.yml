@@ -157,7 +157,8 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$(tr -d '\r\n' < ci/ffmpeg-version.txt)"
-          NDK="${ANDROID_NDK_ROOT:-$ANDROID_HOME/ndk/28.2.13676358}"
+          NDK="$(find "$ANDROID_HOME/ndk" -maxdepth 1 -mindepth 1 -type d -name "28.2.*" -print -quit)"
+          test -n "$NDK"
           TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
           SRC="$GITHUB_WORKSPACE/build/ffmpeg-src/ffmpeg-$VERSION"
           test -d "$SRC"
@@ -176,6 +177,7 @@ jobs:
             ./configure \
               --prefix="$BUILD/prefix" \
               --target-os=android \
+              --enable-cross-compile \
               --arch="$ARCH" \
               --cc="$TOOLCHAIN/bin/${TARGET}26-clang" \
               --cxx="$TOOLCHAIN/bin/${TARGET}26-clang++" \
