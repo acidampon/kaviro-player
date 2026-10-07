@@ -136,6 +136,31 @@ bool NativeMediaEngine::pause() {
     return true;
 }
 
+bool NativeMediaEngine::stop() {
+    if (!session_.isOpen()) {
+        error_ = "Media session is not open";
+        state_ = NativeEngineState::Closed;
+        return false;
+    }
+    if (!session_.seekMs(0)) {
+        error_ = session_.lastError();
+        state_ = NativeEngineState::Error;
+        return false;
+    }
+    if (videoOutput_ != nullptr) videoOutput_->reset();
+    if (audioOutput_ != nullptr) audioOutput_->reset();
+    pendingVideo_ = false;
+    pendingVideoFrame_ = {};
+    clock_ = {};
+    clock_.speed = speed_;
+    clock_.paused = true;
+    clockInitialized_ = true;
+    clockWall_ = std::chrono::steady_clock::now();
+    error_.clear();
+    state_ = NativeEngineState::Paused;
+    return true;
+}
+
 bool NativeMediaEngine::seekMs(std::int64_t positionMs) {
     if (!session_.isOpen() || positionMs < 0) {
         error_ = "Invalid seek request";
