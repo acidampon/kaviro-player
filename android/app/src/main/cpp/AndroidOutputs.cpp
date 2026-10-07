@@ -64,7 +64,7 @@ bool AndroidAudioOutput::flushPendingLocked() {
     const std::size_t bytesPerFrame =
         static_cast<std::size_t>(channels_) * sizeof(std::int16_t);
 
-    while (pendingAudio_.size() > pendingOffset_ + bytesPerFrame) {
+    while (pendingAudio_.size() >= pendingOffset_ + bytesPerFrame) {
         const std::size_t remainingBytes = pendingAudio_.size() - pendingOffset_;
         const int32_t availableFrames =
             static_cast<int32_t>(remainingBytes / bytesPerFrame);
@@ -200,7 +200,11 @@ bool AndroidVideoOutput::present(const ump::FfmpegDecodedFrame& frame) {
         window_, frame.width, frame.height, WINDOW_FORMAT_RGBA_8888);
 
     ANativeWindow_Buffer buffer{};
-    if (ANativeWindow_lock(window_, &buffer, nullptr) != 0) return false;
+    if (ANativeWindow_lock(window_, &buffer, nullptr) != 0) {
+        // A surface may be temporarily unavailable during lifecycle changes.
+        // Do not tear down the media session just because this frame cannot be presented.
+        return true;
+    }
 
     const auto* src = frame.ownedData.data();
     const std::size_t srcStride = static_cast<std::size_t>(frame.width) * 4;
@@ -216,7 +220,10 @@ bool AndroidVideoOutput::present(const ump::FfmpegDecodedFrame& frame) {
             rowBytes);
     }
 
-    return ANativeWindow_unlockAndPost(window_) == 0;
+    // Posting can fail while Android is replacing/destroying the surface.
+    // Treat this as a dropped video frame; the next valid surface can resume presentation.
+    ANativeWindow_unlockAndPost(window_);
+    return true;
 }
 
 void AndroidVideoOutput::reset() { }
