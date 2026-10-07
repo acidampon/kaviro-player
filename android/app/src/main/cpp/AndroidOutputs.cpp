@@ -64,7 +64,7 @@ bool AndroidAudioOutput::write(const ump::FfmpegDecodedFrame& frame) {
             stream_,
             data + static_cast<std::size_t>(offsetFrames) * bytesPerFrame,
             std::min(frames - offsetFrames, availableFrames),
-            200000000);
+            20000);
         if (written < 0) return false;
         if (written == 0) return false;
         offsetFrames += static_cast<int32_t>(written);
