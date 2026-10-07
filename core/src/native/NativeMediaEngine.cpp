@@ -26,15 +26,20 @@ public:
             return videoHandler_ ? videoHandler_(frame) : video_->present(frame);
         }
         if (frame.type == FfmpegStreamType::Audio) {
-            return audio_ == nullptr || audio_->write(frame);
+            if (audio_ == nullptr) return true;
+            if (!audio_->write(frame)) { rejected_ = true; return false; }
+            return true;
         }
         return true;
     }
+
+    bool rejected() const noexcept { return rejected_; }
 
 private:
     VideoOutput* video_;
     AudioOutput* audio_;
     VideoHandler videoHandler_;
+    bool rejected_{false};
 };
 
 } // namespace
@@ -97,12 +102,6 @@ bool NativeMediaEngine::play() {
     }
 
     const auto now = std::chrono::steady_clock::now();
-    if (!clockInitialized_) {
-        clock_.mediaUs = 0;
-        clock_.wallUs = 0;
-        clock_.speed = speed_;
-        clockInitialized_ = true;
-    }
     clock_.speed = speed_;
     clock_.paused = false;
     clockWall_ = now;
@@ -278,7 +277,6 @@ bool NativeMediaEngine::pump(std::size_t maxFrames) {
         clock_.speed = speed_;
         clock_.paused = false;
         clockWall_ = now;
-        clockInitialized_ = true;
     } else {
         const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
             now - clockWall_).count();
@@ -330,6 +328,12 @@ bool NativeMediaEngine::pump(std::size_t maxFrames) {
 
     OutputSink sink(videoOutput_, audioOutput_, std::move(videoHandler));
     const bool decoded = session_.decodeToSink(sink, maxFrames);
+
+    if (sink.rejected() && !pendingVideo_) {
+        if (error_.empty()) error_ = "Playback output rejected a decoded frame";
+        state_ = NativeEngineState::Error;
+        return false;
+    }
 
     if (!decoded) {
         if (pendingVideo_) {
