@@ -101,6 +101,25 @@ bool NativeMediaEngine::play() {
         return false;
     }
 
+    // A completed item can be replayed without reopening the media session.
+    // Reset demux/decoder/output state to the beginning before resuming.
+    if (state_ == NativeEngineState::Ended) {
+        if (!session_.seekMs(0)) {
+            error_ = session_.lastError();
+            state_ = NativeEngineState::Error;
+            return false;
+        }
+        if (videoOutput_ != nullptr) videoOutput_->reset();
+        if (audioOutput_ != nullptr) audioOutput_->reset();
+        pendingVideo_ = false;
+        pendingVideoFrame_ = {};
+        clock_ = {};
+        clock_.speed = speed_;
+        clock_.paused = true;
+        clockInitialized_ = false;
+        error_.clear();
+    }
+
     const auto now = std::chrono::steady_clock::now();
     clock_.speed = speed_;
     clock_.paused = false;
@@ -405,7 +424,7 @@ bool NativeMediaEngine::pump(std::size_t maxFrames) {
             return false;
         }
 
-        state_ = NativeEngineState::Paused;
+        state_ = NativeEngineState::Ended;
         clock_.paused = true;
         return false;
     }
