@@ -462,6 +462,10 @@ FfmpegRecoveryOutcome NativeMediaEngine::recoveryOutcome() const noexcept {
     return session_.recoveryOutcome();
 }
 
+bool NativeMediaEngine::ended() const noexcept {
+    return state_ == NativeEngineState::Ended;
+}
+
 NativeEngineState NativeMediaEngine::state() const noexcept {
     return state_;
 }
