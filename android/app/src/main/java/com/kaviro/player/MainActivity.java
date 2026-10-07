@@ -624,10 +624,40 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                     if (selected == null) return;
                     final String uri = selected.optString("uri", null);
                     if (uri == null || uri.isEmpty()) return;
-                    // The queue contains upcoming media only. Once the user
-                    // explicitly chooses an item, consume it from the queue.
+                    // The queue contains upcoming media only. Consume the
+                    // selected item only after it opens successfully; otherwise it
+                    // remains available for retry.
                     removeQueueItem(uri);
-                    playbackHandler.post(() -> openUri(Uri.parse(uri)));
+                    final String selectedName = selected.optString("name", "Selected media");
+                    playbackHandler.post(() -> {
+                        final boolean opened = openUri(Uri.parse(uri));
+                        if (!opened) {
+                            addQueueItem(uri, selectedName, selected.optLong("durationMs", 0));
+                            runOnUiThread(() -> statusView.setText(
+                                    "Queue item failed to open: " + nativeLastError(nativePlayer)));
+                            refreshPlaybackUi();
+                            return;
+                        }
+                        if (!requestAudioFocus()) {
+                            addQueueItem(uri, selectedName, selected.optLong("durationMs", 0));
+                            runOnUiThread(() -> statusView.setText(
+                                    "Queue item opened but playback is waiting for audio focus"));
+                            refreshPlaybackUi();
+                            return;
+                        }
+                        if (nativePlay(nativePlayer)) {
+                            playing = true;
+                            playbackHandler.post(pumpTask);
+                            runOnUiThread(() -> statusView.setText(
+                                    "Playing: " + selectedName + "\nSession: " + nativeState(nativePlayer)));
+                        } else {
+                            abandonAudioFocus();
+                            addQueueItem(uri, selectedName, selected.optLong("durationMs", 0));
+                            runOnUiThread(() -> statusView.setText(
+                                    "Queue item failed to play: " + nativeLastError(nativePlayer)));
+                        }
+                        refreshPlaybackUi();
+                    });
                 })
                 .setNeutralButton("Manage", (dialog, which) -> showQueueManager())
                 .setPositiveButton("Add media", (dialog, which) -> chooseQueueMedia())
