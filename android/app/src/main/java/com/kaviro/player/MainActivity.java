@@ -318,7 +318,14 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         }
 
         removeQueueItem(nextUri);
-        openUri(Uri.parse(nextUri));
+        final boolean opened = openUri(Uri.parse(nextUri));
+        if (!opened) {
+            addQueueItem(nextUri, next.optString("name", "Next media"), next.optLong("durationMs", 0));
+            runOnUiThread(() -> statusView.setText(
+                    "Next item failed to open: " + nativeLastError(nativePlayer)));
+            refreshPlaybackUi();
+            return;
+        }
         if (!requestAudioFocus()) {
             runOnUiThread(() -> statusView.setText(
                     "Next item opened but playback is waiting for audio focus\n" +
@@ -727,7 +734,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         startActivityForResult(intent, REQUEST_QUEUE_MEDIA);
     }
 
-    private void openUri(Uri uri) {
+    private boolean openUri(Uri uri) {
         persistCurrentPosition();
         playing = false;
         playbackHandler.removeCallbacks(pumpTask);
@@ -748,7 +755,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                     runOnUiThread(() -> statusView.setText(
                             "Opened: " + currentName + "\nSession: " + nativeState(nativePlayer)));
                     runOnUiThread(this::refreshPlaybackUi);
-                    return;
+                    return true;
                 }
             }
 
@@ -767,9 +774,11 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                     opened ? "Opened: " + currentName + "\nSession: " + nativeState(nativePlayer)
                            : "Open failed: " + nativeLastError(nativePlayer)));
             runOnUiThread(this::refreshPlaybackUi);
+            return opened;
         } catch (Exception e) {
             runOnUiThread(() -> statusView.setText("Open failed: " + e.getMessage()));
             refreshPlaybackUi();
+            return false;
         }
     }
 
