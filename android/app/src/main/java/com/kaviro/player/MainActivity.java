@@ -701,8 +701,13 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         }
         final Object current = items.opt(index);
         final Object swapped = items.opt(target);
-        items.put(index, swapped);
-        items.put(target, current);
+        try {
+            items.put(index, swapped);
+            items.put(target, current);
+        } catch (org.json.JSONException e) {
+            statusView.setText("Queue reorder failed: " + e.getMessage());
+            return;
+        }
         saveItems(QUEUE_KEY, items);
         updateQueueSummary();
         showQueueManager();
