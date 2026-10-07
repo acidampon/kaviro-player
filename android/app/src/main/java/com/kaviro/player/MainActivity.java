@@ -401,8 +401,9 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         final String name = queryDisplayName(uri);
         if (requestCode == REQUEST_QUEUE_MEDIA) {
             playbackHandler.post(() -> {
-                addQueueItem(uri.toString(), name, 0);
-                runOnUiThread(() -> statusView.setText("Added to queue: " + name));
+                final boolean added = addQueueItem(uri.toString(), name, 0);
+                runOnUiThread(() -> statusView.setText(
+                        added ? "Added to queue: " + name : "Already in queue: " + name));
             });
         } else {
             playbackHandler.post(() -> openUri(uri));
@@ -497,6 +498,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                 items = trimmed;
             }
             saveItems(QUEUE_KEY, items);
+            updateQueueSummary();
             return true;
         } catch (Exception ignored) {
             return false;
