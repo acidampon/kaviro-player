@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <utility>
 
 namespace ump::native {
 
@@ -255,7 +256,7 @@ NativeEngineInfo NativeMediaEngine::info() const {
     NativeEngineInfo result;
     result.version = "9.0.2";
     result.buildId = "kaviro-ffmpeg-9.0.2";
-    result.license = "LGPL-2.1-or-later";
+    result.license = "FFmpeg 9.0.2 (license depends on build configuration)";
     result.upstreamSource = "https://ffmpeg.org/";
     result.standalone = session_.standaloneReady();
     result.available = session_.isOpen();
