@@ -399,6 +399,14 @@ bool FfmpegMediaSession::selectAudioTrack(int index) {
         error_ = "audio track not found";
         return false;
     }
+#if defined(KAVIRO_FFMPEG_NATIVE)
+    if (index < 0 ||
+        index >= static_cast<int>(impl_->streamToDecoder.size()) ||
+        impl_->streamToDecoder[index] < 0) {
+        error_ = "audio track decoder unavailable";
+        return false;
+    }
+#endif
 
     for (auto& stream : streams_) {
         if (stream.type == FfmpegStreamType::Audio)
@@ -439,6 +447,14 @@ bool FfmpegMediaSession::selectVideoTrack(int index) {
         error_ = "video track not found";
         return false;
     }
+#if defined(KAVIRO_FFMPEG_NATIVE)
+    if (index < 0 ||
+        index >= static_cast<int>(impl_->streamToDecoder.size()) ||
+        impl_->streamToDecoder[index] < 0) {
+        error_ = "video track decoder unavailable";
+        return false;
+    }
+#endif
 
     for (auto& stream : streams_) {
         if (stream.type == FfmpegStreamType::Video)
