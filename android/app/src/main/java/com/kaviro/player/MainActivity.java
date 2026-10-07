@@ -173,7 +173,10 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     protected void onDestroy() {
         playing = false;
         if (playbackHandler != null) playbackHandler.removeCallbacksAndMessages(null);
-        if (playbackThread != null) playbackThread.quitSafely();
+        if (playbackThread != null) {
+            playbackThread.quitSafely();
+            try { playbackThread.join(2000); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+        }
         if (nativePlayer != 0) {
             nativeRelease(nativePlayer);
             nativePlayer = 0;
