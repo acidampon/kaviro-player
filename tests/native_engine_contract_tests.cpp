@@ -29,6 +29,12 @@ int main() {
     e.binaryChecksum = "sha256:wrong";
     assert(!NativeEnginePackageValidator::validate(m, e, error));
 
+    struct ClocklessAudio final : AudioOutput {
+        bool write(const ump::FfmpegDecodedFrame&) override { return true; }
+    };
+    ClocklessAudio audio;
+    assert(audio.clockPositionUs() == -1);
+
     NativeMediaEngine engine;
     assert(!engine.isOpen());
     assert(!engine.standaloneReady());
