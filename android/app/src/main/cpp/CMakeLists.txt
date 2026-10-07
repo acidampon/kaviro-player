@@ -15,18 +15,20 @@ if(NOT EXISTS "${KAVIRO_FFMPEG_INCLUDE}/libavformat/avformat.h")
     message(FATAL_ERROR "Pinned FFmpeg headers are missing for Android ABI ${ANDROID_ABI}")
 endif()
 
-set(KAVIRO_FFMPEG_LIBS
-    avutil
-    swresample
-    swscale
-    avcodec
-    avformat
+set(KAVIRO_FFMPEG_LIB_FILES
+    "avutil;libavutil.so.61"
+    "swresample;libswresample.so.7"
+    "swscale;libswscale.so.10"
+    "avcodec;libavcodec.so.63"
+    "avformat;libavformat.so.63"
 )
 
-foreach(lib IN LISTS KAVIRO_FFMPEG_LIBS)
+foreach(entry IN LISTS KAVIRO_FFMPEG_LIB_FILES)
+    list(GET entry 0 lib)
+    list(GET entry 1 filename)
     add_library(kaviro_ffmpeg_${lib} SHARED IMPORTED)
     set_target_properties(kaviro_ffmpeg_${lib} PROPERTIES
-        IMPORTED_LOCATION "${KAVIRO_FFMPEG_ROOT}/lib/lib${lib}.so"
+        IMPORTED_LOCATION "${KAVIRO_FFMPEG_ROOT}/${filename}"
         INTERFACE_INCLUDE_DIRECTORIES "${KAVIRO_FFMPEG_INCLUDE}"
     )
 endforeach()
