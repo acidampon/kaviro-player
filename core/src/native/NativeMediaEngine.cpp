@@ -64,7 +64,12 @@ bool NativeMediaEngine::open(const std::filesystem::path& path, bool recoveryMod
         return false;
     }
 
-    session_.close();
+    // The candidate is now known-good. Only at this point replace the
+    // current session, and reset platform outputs so buffered frames and any
+    // hardware audio clock from the previous media cannot leak into the new
+    // timeline.
+    if (videoOutput_ != nullptr) videoOutput_->reset();
+    if (audioOutput_ != nullptr) audioOutput_->reset();
     session_ = std::move(candidate);
     error_.clear();
     state_ = NativeEngineState::Open;
