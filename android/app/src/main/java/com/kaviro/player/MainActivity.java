@@ -6,6 +6,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.ParcelFileDescriptor;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -32,6 +33,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     private static native long nativeCreate();
     private static native void nativeRelease(long handle);
     private static native boolean nativeOpen(long handle, String path);
+    private static native boolean nativeOpenFd(long handle, int fd);
     private static native boolean nativeSetSurface(long handle, Surface surface);
     private static native boolean nativePlay(long handle);
     private static native boolean nativePause(long handle);
@@ -108,20 +110,30 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         }
 
         final Uri uri = data.getData();
-        playbackHandler.post(() -> {
-            final File localFile;
-            try {
-                localFile = copyToCache(uri);
-            } catch (Exception e) {
-                runOnUiThread(() -> statusView.setText("Open failed: " + e.getMessage()));
-                return;
+        playbackHandler.post(() -> openUri(uri));
+    }
+
+    private void openUri(Uri uri) {
+        try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(uri, "r")) {
+            if (pfd != null && pfd.getFd() >= 0) {
+                final boolean opened = nativeOpenFd(nativePlayer, pfd.getFd());
+                if (opened) {
+                    runOnUiThread(() -> statusView.setText(
+                            "Opened selected media\nSession: " + nativeState(nativePlayer)));
+                    return;
+                }
             }
 
+            // Some document providers expose a non-reopenable/virtual descriptor.
+            // Fall back to a private cache copy only when direct descriptor access fails.
+            final File localFile = copyToCache(uri);
             final boolean opened = nativeOpen(nativePlayer, localFile.getAbsolutePath());
             runOnUiThread(() -> statusView.setText(
                     opened ? "Opened: " + localFile.getName() + "\nSession: " + nativeState(nativePlayer)
                            : "Open failed: " + nativeLastError(nativePlayer)));
-        });
+        } catch (Exception e) {
+            runOnUiThread(() -> statusView.setText("Open failed: " + e.getMessage()));
+        }
     }
 
     private File copyToCache(Uri uri) throws Exception {
