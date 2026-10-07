@@ -44,7 +44,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ pkg-config libsqlite3-dev xz-utils gnupg wget nasm
+          sudo apt-get install -y cmake ninja-build g++ pkg-config libsqlite3-dev xz-utils gnupg wget nasm ffmpeg
       - name: Fetch and verify pinned FFmpeg source
         shell: bash
         run: |
