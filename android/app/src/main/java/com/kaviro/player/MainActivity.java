@@ -549,17 +549,21 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             }
             if (failure == null && parsed.isEmpty()) failure = "No valid SRT subtitles found. Choose a SubRip (.srt) file.";
             final String error = failure;
+            if (error == null) {
+                Collections.sort(parsed, (left, right) -> Long.compare(left.startMs, right.startMs));
+                // Cue state is owned by the playback handler so subtitle refreshes
+                // never race the loader while it replaces the active cue list.
+                subtitleCues.clear();
+                subtitleCues.addAll(parsed);
+            }
             runOnUiThread(() -> {
                 if (error != null) {
                     statusView.setText("Subtitle load failed: " + error);
                     return;
                 }
-                Collections.sort(parsed, (left, right) -> Long.compare(left.startMs, right.startMs));
-                subtitleCues.clear();
-                subtitleCues.addAll(parsed);
                 statusView.setText("Loaded " + parsed.size() + " subtitle cues: " + queryDisplayName(uri));
-                updateSubtitleOverlay(nativePlayer == 0 ? 0 : nativePositionMs(nativePlayer));
             });
+            if (error == null) updateSubtitleOverlay(nativePlayer == 0 ? 0 : nativePositionMs(nativePlayer));
         });
     }
 
@@ -573,7 +577,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     }
 
     private void updateSubtitleOverlay(long positionMs) {
-        if (subtitleView == null) return;
+        if (subtitleView == null || subtitleCues.isEmpty()) return;
         String visibleText = null;
         for (SubtitleCue cue : subtitleCues) {
             if (positionMs < cue.startMs) break;
