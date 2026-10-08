@@ -549,9 +549,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         JSONArray items = loadItems(QUEUE_KEY);
         for (int i = 0; i < items.length(); ++i) {
             JSONObject item = items.optJSONObject(i);
-            if (item != null && sameUri(item, uri)) {
-                return;
-            }
+            if (item != null && sameUri(item, uri)) return;
         }
         try {
             JSONObject item = new JSONObject();
@@ -566,15 +564,12 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             }
             if (restored.length() > MAX_QUEUE_ITEMS) {
                 JSONArray trimmed = new JSONArray();
-                for (int i = 0; i < MAX_QUEUE_ITEMS; ++i) {
-                    trimmed.put(restored.opt(i));
-                }
+                for (int i = 0; i < MAX_QUEUE_ITEMS; ++i) trimmed.put(restored.opt(i));
                 restored = trimmed;
             }
             saveItems(QUEUE_KEY, restored);
             updateQueueSummary();
-        } catch (org.json.JSONException ignored) {
-        }
+        } catch (org.json.JSONException ignored) {}
     }
 
     private void dropFirstQueueItem() {
@@ -798,7 +793,43 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             items.put(index, swapped);
             items.put(target, current);
         } catch (org.json.JSONException e) {
+            statusView.setText("Queue reorder failed: " + e.getMessage());
+            return;
+        }
+        saveItems(QUEUE_KEY, items);
+        updateQueueSummary();
+        showQueueManager();
+    }
+
+    private void removeQueueItemAt(int index) {
+        JSONArray items = loadItems(QUEUE_KEY);
+        if (index < 0 || index >= items.length()) return;
+        JSONArray next = new JSONArray();
+        for (int i = 0; i < items.length(); ++i) {
+            if (i != index) next.put(items.opt(i));
+        }
+        saveItems(QUEUE_KEY, next);
+        updateQueueSummary();
+        showQueueManager();
+    }
+
+    private void clearQueue() {
+        saveItems(QUEUE_KEY, new JSONArray());
+        updateQueueSummary();
+        statusView.setText("Queue cleared");
+    }
+
+    private void chooseQueueMedia() {
+        final Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        intent.setType("*/*");
+        startActivityForResult(intent, REQUEST_QUEUE_MEDIA);
+    }
+
+    private boolean openUri(Uri uri) {
         persistCurrentPosition();
+        resumeAfterFocusLoss = false;
         if (nativePlayer != 0 && "playing".equals(nativeState(nativePlayer))) {
             nativePause(nativePlayer);
         }
