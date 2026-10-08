@@ -242,11 +242,12 @@ jobs:
           command -v readelf >/dev/null
           for SO in lib/arm64-v8a/libkaviro_android.so lib/x86_64/libkaviro_android.so; do
             echo "ELF LOAD alignment: $SO"
-            LOAD_LINES="$(readelf -lW "$SO" | grep -E '^[[:space:]]*LOAD[[:space:]]' || true)"
-            test -n "$LOAD_LINES"
-            printf '%s\n' "$LOAD_LINES"
-            BAD="$(printf '%s\n' "$LOAD_LINES" | awk '{if ($NF != "0x4000") bad=1; n++} END{if (n == 0) bad=1; print bad+0}')"
-            echo "ELF alignment verdict: $BAD"
+            readelf -lW "$SO" > "readelf.txt"
+            cat "readelf.txt"
+            LOAD_VALUES="$(awk '$1 == "LOAD" {print $NF}' readelf.txt)"
+            test -n "$LOAD_VALUES"
+            BAD="$(printf '%s\n' "$LOAD_VALUES" | awk '$1 != "0x4000" {bad=1; count++} END{if (count == 0) bad=1; print bad+0}')"
+            echo "ELF LOAD alignment verdict: $BAD"
             test "$BAD" = "0"
           done
 
