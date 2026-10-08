@@ -238,11 +238,25 @@ jobs:
           unzip -l "$APK" | grep -q 'lib/x86_64/libswscale.so'
           mkdir -p build/apk-native-check
           cd build/apk-native-check
-          unzip -oq "$GITHUB_WORKSPACE/$APK" 'lib/arm64-v8a/libkaviro_android.so' 'lib/x86_64/libkaviro_android.so'
-          command -v readelf >/dev/null
-          for SO in lib/arm64-v8a/libkaviro_android.so lib/x86_64/libkaviro_android.so; do
+          unzip -oq "$GITHUB_WORKSPACE/$APK" \
+            'lib/arm64-v8a/*.so' \
+            'lib/x86_64/*.so'
+          for SO in \
+            lib/arm64-v8a/libkaviro_android.so \
+            lib/arm64-v8a/libavformat.so \
+            lib/arm64-v8a/libavcodec.so \
+            lib/arm64-v8a/libavutil.so \
+            lib/arm64-v8a/libswresample.so \
+            lib/arm64-v8a/libswscale.so \
+            lib/x86_64/libkaviro_android.so \
+            lib/x86_64/libavformat.so \
+            lib/x86_64/libavcodec.so \
+            lib/x86_64/libavutil.so \
+            lib/x86_64/libswresample.so \
+            lib/x86_64/libswscale.so; do
+            test -f "$SO"
             echo "Validating ELF LOAD alignment: $SO"
-            python3 -c 'import struct,sys; d=open(sys.argv[1],"rb").read(); assert d[:4]==b"\x7fELF" and d[4]==2; e="<" if d[5]==1 else ">"; o=struct.unpack_from(e+"Q",d,32)[0]; s=struct.unpack_from(e+"H",d,54)[0]; n=struct.unpack_from(e+"H",d,56)[0]; a=[struct.unpack_from(e+"IIQQQQQQ",d,o+i*s)[7] for i in range(n) if struct.unpack_from(e+"IIQQQQQQ",d,o+i*s)[0]==1]; print(sys.argv[1], [hex(x) for x in a]); raise SystemExit(0 if a and all(x==0x4000 for x in a) else "bad PT_LOAD alignments: "+str([hex(x) for x in a]))' "$SO"
+            python3 -c 'import struct,sys; d=open(sys.argv[1],"rb").read(); assert d[:4]==b"\x7fELF" and d[4]==2; e="<" if d[5]==1 else ">"; o=struct.unpack_from(e+"Q",d,32)[0]; s=struct.unpack_from(e+"H",d,54)[0]; n=struct.unpack_from(e+"H",d,56)[0]; a=[struct.unpack_from(e+"IIQQQQQQ",d,o+i*s)[7] for i in range(n) if struct.unpack_from(e+"IIQQQQQQ",d,o+i*s)[0]==1]; raise SystemExit(0 if a and all(x==0x4000 for x in a) else "bad PT_LOAD alignments: "+str([hex(x) for x in a]))' "$SO"
           done
 
       - name: Upload APK
