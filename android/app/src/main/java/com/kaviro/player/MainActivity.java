@@ -52,6 +52,9 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     private Button playPauseButton;
     private SurfaceView surfaceView;
     private TextView subtitleView;
+    private Button subtitlesButton;
+    private volatile boolean subtitlesEnabled = true;
+    private boolean subtitlesLoaded;
     private final List<SubtitleCue> subtitleCues = new ArrayList<>();
     private static final int REQUEST_OPEN_SUBTITLE = 1003;
     private static final Pattern SRT_TIMING = Pattern.compile("(\\d{1,2}):(\\d{2}):(\\d{2})[,.](\\d{1,3})\\s*-->\\s*(\\d{1,2}):(\\d{2}):(\\d{2})[,.](\\d{1,3}).*");
@@ -241,16 +244,25 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         video.setText("Video");
         video.setOnClickListener(v -> chooseTrack(false));
 
-        final Button subtitles = new Button(this);
-        subtitles.setText("Subs");
-        subtitles.setOnClickListener(v -> chooseSubtitleFile());
+        subtitlesButton = new Button(this);
+        subtitlesButton.setText("Subs");
+        subtitlesButton.setOnClickListener(v -> {
+            if (!subtitlesLoaded) {
+                chooseSubtitleFile();
+                return;
+            }
+            subtitlesEnabled = !subtitlesEnabled;
+            subtitlesButton.setText(subtitlesEnabled ? "Subs On" : "Subs Off");
+            playbackHandler.post(() -> updateSubtitleOverlay(nativePlayer == 0 ? 0 : nativePositionMs(nativePlayer)));
+        });
+        subtitlesButton.setOnLongClickListener(v -> { chooseSubtitleFile(); return true; });
 
         controls.addView(open, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         controls.addView(playPauseButton, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         controls.addView(stop, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         controls.addView(audio, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         controls.addView(video, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        controls.addView(subtitles, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        controls.addView(subtitlesButton, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         root.addView(controls);
 
         final LinearLayout libraryControls = new LinearLayout(this);
@@ -561,6 +573,9 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                     statusView.setText("Subtitle load failed: " + error);
                     return;
                 }
+                subtitlesLoaded = true;
+                subtitlesEnabled = true;
+                if (subtitlesButton != null) subtitlesButton.setText("Subs On");
                 statusView.setText("Loaded " + parsed.size() + " subtitle cues: " + queryDisplayName(uri));
             });
             if (error == null) updateSubtitleOverlay(nativePlayer == 0 ? 0 : nativePositionMs(nativePlayer));
@@ -577,7 +592,11 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     }
 
     private void updateSubtitleOverlay(long positionMs) {
-        if (subtitleView == null || subtitleCues.isEmpty()) return;
+        if (subtitleView == null) return;
+        if (subtitleCues.isEmpty() || !subtitlesEnabled) {
+            runOnUiThread(() -> { if (subtitleView != null) subtitleView.setVisibility(View.GONE); });
+            return;
+        }
         String visibleText = null;
         for (SubtitleCue cue : subtitleCues) {
             if (positionMs < cue.startMs) break;
@@ -981,6 +1000,9 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         resumeAfterLifecycle = false;
         subtitleCues.clear();
         runOnUiThread(() -> {
+            subtitlesLoaded = false;
+            subtitlesEnabled = true;
+            if (subtitlesButton != null) subtitlesButton.setText("Subs");
             if (subtitleView != null) { subtitleView.setText(""); subtitleView.setVisibility(View.GONE); }
         });
         if (nativePlayer != 0 && "playing".equals(nativeState(nativePlayer))) {
