@@ -166,7 +166,7 @@ jobs:
           path: |
             android/app/src/main/jniLibs
             android/app/src/main/ffmpeg/include
-          key: android-ffmpeg-9.0.2-ndk28.2.13676358-${{ hashFiles('ci/ffmpeg-version.txt') }}
+          key: android-ffmpeg-9.0.2-ndk28.2.13676358-unversioned-v2-${{ hashFiles('ci/ffmpeg-version.txt') }}
 
       - name: Build pinned FFmpeg for Android ABIs
         if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
@@ -210,11 +210,11 @@ jobs:
             make install
             mkdir -p "$HEADER_PREFIX"
             cp -R "$BUILD/prefix/include/." "$HEADER_PREFIX/"
-            cp -L "$(find "$BUILD/prefix" -name "libavutil.so" -print -quit)" "$PREFIX/libavutil.so.61"
-            cp -L "$(find "$BUILD/prefix" -name "libavcodec.so" -print -quit)" "$PREFIX/libavcodec.so.63"
-            cp -L "$(find "$BUILD/prefix" -name "libavformat.so" -print -quit)" "$PREFIX/libavformat.so.63"
-            cp -L "$(find "$BUILD/prefix" -name "libswresample.so" -print -quit)" "$PREFIX/libswresample.so.7"
-            cp -L "$(find "$BUILD/prefix" -name "libswscale.so" -print -quit)" "$PREFIX/libswscale.so.10"
+            cp -L "$(find "$BUILD/prefix" -name "libavutil.so" -print -quit)" "$PREFIX/libavutil.so"
+            cp -L "$(find "$BUILD/prefix" -name "libavcodec.so" -print -quit)" "$PREFIX/libavcodec.so"
+            cp -L "$(find "$BUILD/prefix" -name "libavformat.so" -print -quit)" "$PREFIX/libavformat.so"
+            cp -L "$(find "$BUILD/prefix" -name "libswresample.so" -print -quit)" "$PREFIX/libswresample.so"
+            cp -L "$(find "$BUILD/prefix" -name "libswscale.so" -print -quit)" "$PREFIX/libswscale.so"
           done
 
       - name: Assemble debug APK
@@ -226,16 +226,16 @@ jobs:
           set -euo pipefail
           APK="$(find android/app/build/outputs/apk/debug -maxdepth 1 -name '*.apk' -print -quit)"
           test -n "$APK"
-          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libavformat.so.63'
-          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libavcodec.so.63'
-          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libavutil.so.61'
-          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libswresample.so.7'
-          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libswscale.so.10'
-          unzip -l "$APK" | grep -q 'lib/x86_64/libavformat.so.63'
-          unzip -l "$APK" | grep -q 'lib/x86_64/libavcodec.so.63'
-          unzip -l "$APK" | grep -q 'lib/x86_64/libavutil.so.61'
-          unzip -l "$APK" | grep -q 'lib/x86_64/libswresample.so.7'
-          unzip -l "$APK" | grep -q 'lib/x86_64/libswscale.so.10'
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libavformat.so'
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libavcodec.so'
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libavutil.so'
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libswresample.so'
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libswscale.so'
+          unzip -l "$APK" | grep -q 'lib/x86_64/libavformat.so'
+          unzip -l "$APK" | grep -q 'lib/x86_64/libavcodec.so'
+          unzip -l "$APK" | grep -q 'lib/x86_64/libavutil.so'
+          unzip -l "$APK" | grep -q 'lib/x86_64/libswresample.so'
+          unzip -l "$APK" | grep -q 'lib/x86_64/libswscale.so'
           mkdir -p build/apk-native-check
           cd build/apk-native-check
           unzip -oq "$GITHUB_WORKSPACE/$APK" 'lib/arm64-v8a/libkaviro_android.so' 'lib/x86_64/libkaviro_android.so'
