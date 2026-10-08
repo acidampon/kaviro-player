@@ -16,11 +16,11 @@ if(NOT EXISTS "${KAVIRO_FFMPEG_INCLUDE}/libavformat/avformat.h")
 endif()
 
 set(KAVIRO_FFMPEG_LIB_FILES
-    "avutil|libavutil.so.61"
-    "swresample|libswresample.so.7"
-    "swscale|libswscale.so.10"
-    "avcodec|libavcodec.so.63"
-    "avformat|libavformat.so.63"
+    "avutil|libavutil.so"
+    "swresample|libswresample.so"
+    "swscale|libswscale.so"
+    "avcodec|libavcodec.so"
+    "avformat|libavformat.so"
 )
 
 foreach(entry IN LISTS KAVIRO_FFMPEG_LIB_FILES)
