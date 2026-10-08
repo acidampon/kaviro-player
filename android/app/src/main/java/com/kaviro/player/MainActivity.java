@@ -536,7 +536,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                             if (start >= 0 && end > start && cueText.length() > 0)
                                 parsed.add(new SubtitleCue(start, end, cueText.toString().trim()));
                             start = -1; end = -1; cueText.setLength(0);
-                        } else if (start >= 0 && !trimmed.matches("\\d+")) {
+                        } else if (start >= 0) {
                             if (cueText.length() > 0) cueText.append('\n');
                             cueText.append(trimmed);
                         }
