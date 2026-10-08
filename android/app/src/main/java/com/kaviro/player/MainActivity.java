@@ -798,38 +798,227 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             items.put(index, swapped);
             items.put(target, current);
         } catch (org.json.JSONException e) {
-            statusView.setText("Queue reorder failed: " + e.getMessage());
+        persistCurrentPosition();
+        if (nativePlayer != 0 && "playing".equals(nativeState(nativePlayer))) {
+            nativePause(nativePlayer);
+        }
+        playing = false;
+        playbackHandler.removeCallbacks(pumpTask);
+        abandonAudioFocus();
+        final String candidateUri = uri.toString();
+        final String candidateName = queryDisplayName(uri);
+        final JSONObject saved = findRecent(candidateUri);
+        final long savedPosition = saved == null ? 0 : Math.max(0, saved.optLong("positionMs", 0));
+        try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(uri, "r")) {
+            if (pfd != null && pfd.getFd() >= 0) {
+                final boolean opened = nativeOpenFd(nativePlayer, pfd.getFd());
+                if (opened) {
+                    currentUri = candidateUri;
+                    currentName = candidateName;
+                    restoreSavedPosition(savedPosition);
+                    addRecentItem(currentUri, currentName, nativePositionMs(nativePlayer), nativeDurationMs(nativePlayer));
+                    lastPositionPersistMs = System.currentTimeMillis();
+                    runOnUiThread(() -> statusView.setText(
+                            "Opened: " + currentName + "\nSession: " + nativeState(nativePlayer)));
+                    runOnUiThread(this::refreshPlaybackUi);
+                    return true;
+                }
+            }
+
+            // Some document providers expose a non-reopenable/virtual descriptor.
+            // Fall back to a private cache copy only when direct descriptor access fails.
+            final File localFile = copyToCache(uri);
+            final boolean opened = nativeOpen(nativePlayer, localFile.getAbsolutePath());
+            if (opened) {
+                currentUri = candidateUri;
+                currentName = candidateName;
+                restoreSavedPosition(savedPosition);
+                addRecentItem(currentUri, currentName, nativePositionMs(nativePlayer), nativeDurationMs(nativePlayer));
+                lastPositionPersistMs = System.currentTimeMillis();
+            }
+            runOnUiThread(() -> statusView.setText(
+                    opened ? "Opened: " + currentName + "\nSession: " + nativeState(nativePlayer)
+                           : "Open failed: " + nativeLastError(nativePlayer)));
+            runOnUiThread(this::refreshPlaybackUi);
+            return opened;
+        } catch (Exception e) {
+            runOnUiThread(() -> statusView.setText("Open failed: " + e.getMessage()));
+            refreshPlaybackUi();
+            return false;
+        }
+    }
+
+    private void restoreSavedPosition(long savedPosition) {
+        if (savedPosition <= 0 || nativePlayer == 0) return;
+        final long duration = nativeDurationMs(nativePlayer);
+        if (duration <= 0) return;
+        final long safe = Math.min(savedPosition, Math.max(0, duration - 1000));
+        if (safe > 0) nativeSeekMs(nativePlayer, safe);
+    }
+
+    private File copyToCache(Uri uri) throws Exception {
+        String name = "kaviro-" + System.currentTimeMillis() + ".media";
+        File target = new File(getCacheDir(), name);
+        try (InputStream input = getContentResolver().openInputStream(uri);
+             FileOutputStream output = new FileOutputStream(target)) {
+            if (input == null) throw new IllegalStateException("Unable to read selected media");
+            byte[] buffer = new byte[1024 * 1024];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                output.write(buffer, 0, read);
+            }
+        }
+        return target;
+    }
+
+    private boolean requestAudioFocus() {
+        if (audioManager == null || audioFocusRequest == null) return true;
+        final int result = audioManager.requestAudioFocus(audioFocusRequest);
+        hasAudioFocus = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+        return hasAudioFocus;
+    }
+
+    private void abandonAudioFocus() {
+        if (audioManager != null && audioFocusRequest != null && hasAudioFocus) {
+            audioManager.abandonAudioFocusRequest(audioFocusRequest);
+        }
+        hasAudioFocus = false;
+    }
+
+    private void onAudioFocusChange(int focusChange) {
+        if (focusChange == AudioManager.AUDIOFOCUS_GAIN) {
+            hasAudioFocus = true;
+            if (resumeAfterFocusLoss && nativePlayer != 0 && !playing) {
+                resumeAfterFocusLoss = false;
+                if (nativePlay(nativePlayer)) {
+                    playing = true;
+                    playbackHandler.post(pumpTask);
+                    statusView.setText("Playback resumed\nSession: " + nativeState(nativePlayer));
+                    refreshPlaybackUi();
+                }
+            }
             return;
         }
-        saveItems(QUEUE_KEY, items);
-        updateQueueSummary();
-        showQueueManager();
-    }
 
-    private void removeQueueItemAt(int index) {
-        JSONArray items = loadItems(QUEUE_KEY);
-        if (index < 0 || index >= items.length()) return;
-        JSONArray next = new JSONArray();
-        for (int i = 0; i < items.length(); ++i) {
-            if (i != index) next.put(items.opt(i));
+        if (focusChange == AudioManager.AUDIOFOCUS_LOSS ||
+                focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT ||
+                focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) {
+            if (playing) {
+                resumeAfterFocusLoss = true;
+                playing = false;
+                playbackHandler.removeCallbacks(pumpTask);
+                if (nativePlayer != 0) nativePause(nativePlayer);
+            }
+            hasAudioFocus = false;
+            if (focusChange != AudioManager.AUDIOFOCUS_LOSS) {
+                statusView.setText("Paused for audio focus\nSession: " + nativeState(nativePlayer));
+                refreshPlaybackUi();
+            }
         }
-        saveItems(QUEUE_KEY, next);
-        updateQueueSummary();
-        showQueueManager();
     }
 
-    private void clearQueue() {
-        saveItems(QUEUE_KEY, new JSONArray());
-        updateQueueSummary();
-        statusView.setText("Queue cleared");
+    private void stopPlayback() {
+        if (nativePlayer == 0) return;
+        persistCurrentPosition();
+        playing = false;
+        playbackHandler.removeCallbacks(pumpTask);
+        resumeAfterFocusLoss = false;
+        resumeAfterLifecycle = false;
+        final boolean ok = nativeStop(nativePlayer);
+        abandonAudioFocus();
+        statusView.setText(ok
+                ? "Stopped\nPosition: 0:00\nSession: " + nativeState(nativePlayer)
+                : "Stop failed: " + nativeLastError(nativePlayer));
+        refreshPlaybackUi();
     }
 
-    private void chooseQueueMedia() {
-        final Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-        intent.setType("*/*");
-        startActivityForResult(intent, REQUEST_QUEUE_MEDIA);
+    private void togglePlayback() {
+        if (nativePlayer == 0) return;
+        if (playing) {
+            playing = false;
+            resumeAfterFocusLoss = false;
+            resumeAfterLifecycle = false;
+            playbackHandler.removeCallbacks(pumpTask);
+            nativePause(nativePlayer);
+            abandonAudioFocus();
+        } else {
+            if (!requestAudioFocus()) {
+                statusView.setText("Playback blocked: audio focus unavailable");
+                return;
+            }
+            resumeAfterFocusLoss = false;
+            resumeAfterLifecycle = false;
+            if (nativePlay(nativePlayer)) {
+                playing = true;
+                playbackHandler.post(pumpTask);
+            } else {
+                abandonAudioFocus();
+            }
+        }
+        statusView.setText("Session: " + nativeState(nativePlayer));
+        refreshPlaybackUi();
     }
 
-    private boolean openUri(Uri uri) {
+    @Override
+    protected void onPause() {
+        persistCurrentPosition();
+        resumeAfterFocusLoss = false;
+        if (playing) {
+            resumeAfterLifecycle = true;
+            playing = false;
+            playbackHandler.removeCallbacks(pumpTask);
+            if (nativePlayer != 0) nativePause(nativePlayer);
+        }
+        abandonAudioFocus();
+        super.onPause();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (resumeAfterLifecycle && nativePlayer != 0) {
+            resumeAfterLifecycle = false;
+            if (requestAudioFocus() && nativePlay(nativePlayer)) {
+                playing = true;
+                playbackHandler.post(pumpTask);
+                statusView.setText("Playback resumed\nSession: " + nativeState(nativePlayer));
+            } else {
+                statusView.setText("Resume failed: " + nativeLastError(nativePlayer));
+            }
+        }
+    }
+
+    @Override
+    public void surfaceCreated(SurfaceHolder holder) {
+        if (nativePlayer != 0) nativeSetSurface(nativePlayer, holder.getSurface());
+    }
+
+    @Override
+    public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+        if (nativePlayer != 0) nativeSetSurface(nativePlayer, holder.getSurface());
+    }
+
+    @Override
+    public void surfaceDestroyed(SurfaceHolder holder) {
+        if (nativePlayer != 0) nativeSetSurface(nativePlayer, null);
+    }
+
+    @Override
+    protected void onDestroy() {
+        persistCurrentPosition();
+        playing = false;
+        resumeAfterFocusLoss = false;
+        resumeAfterLifecycle = false;
+        abandonAudioFocus();
+        if (playbackHandler != null) playbackHandler.removeCallbacksAndMessages(null);
+        if (playbackThread != null) {
+            playbackThread.quitSafely();
+            try { playbackThread.join(2000); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+        }
+        if (nativePlayer != 0) {
+            nativeRelease(nativePlayer);
+            nativePlayer = 0;
+        }
+        super.onDestroy();
+    }
+}
