@@ -242,8 +242,11 @@ jobs:
           command -v readelf >/dev/null
           for SO in lib/arm64-v8a/libkaviro_android.so lib/x86_64/libkaviro_android.so; do
             echo "ELF LOAD alignment: $SO"
-            readelf -lW "$SO" | awk '$1=="LOAD"{print "  alignment=" $NF}'
-            readelf -lW "$SO" | awk '$1=="LOAD"{n++; if ($NF != "0x4000") bad=1} END{if (n == 0 || bad) exit 1}'
+            LOAD_LINES="$(readelf -lW "$SO" | grep -E '^[[:space:]]*LOAD[[:space:]]')"
+            test -n "$LOAD_LINES"
+            printf '%s\n' "$LOAD_LINES" | awk '{print "  alignment=" $NF}'
+            BAD="$(printf '%s\n' "$LOAD_LINES" | awk '$NF != "0x4000" {bad=1} END{print bad+0}')"
+            test "$BAD" = "0"
           done
 
       - name: Upload APK
