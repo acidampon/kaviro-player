@@ -243,45 +243,43 @@ jobs:
           for SO in lib/arm64-v8a/libkaviro_android.so lib/x86_64/libkaviro_android.so; do
             echo "Validating ELF LOAD alignment: $SO"
             python3 - "$SO" <<'PY'
-import struct
-import sys
+            import struct
+            import sys
 
-path = sys.argv[1]
-data = open(path, "rb").read()
-if data[:4] != b"\\x7fELF":
-    raise SystemExit(f"not an ELF file: {path}")
-if data[4] == 2:
-    cls = "ELF64"
-    endian = "<" if data[5] == 1 else ">"
-    e_phoff = struct.unpack_from(endian + "Q", data, 32)[0]
-    e_phentsize = struct.unpack_from(endian + "H", data, 54)[0]
-    e_phnum = struct.unpack_from(endian + "H", data, 56)[0]
-    ph_fmt = endian + "IIQQQQQQ"
-    p_align_index = 7
-elif data[4] == 1:
-    cls = "ELF32"
-    endian = "<" if data[5] == 1 else ">"
-    e_phoff = struct.unpack_from(endian + "I", data, 28)[0]
-    e_phentsize = struct.unpack_from(endian + "H", data, 42)[0]
-    e_phnum = struct.unpack_from(endian + "H", data, 44)[0]
-    ph_fmt = endian + "IIIIIIII"
-    p_align_index = 7
-else:
-    raise SystemExit(f"unsupported ELF class: {data[4]}")
+            path = sys.argv[1]
+            data = open(path, "rb").read()
+            if data[:4] != b"\\x7fELF":
+                raise SystemExit(f"not an ELF file: {path}")
+            if data[4] == 2:
+                cls = "ELF64"
+                endian = "<" if data[5] == 1 else ">"
+                e_phoff = struct.unpack_from(endian + "Q", data, 32)[0]
+                e_phentsize = struct.unpack_from(endian + "H", data, 54)[0]
+                e_phnum = struct.unpack_from(endian + "H", data, 56)[0]
+                ph_fmt = endian + "IIQQQQQQ"
+            elif data[4] == 1:
+                cls = "ELF32"
+                endian = "<" if data[5] == 1 else ">"
+                e_phoff = struct.unpack_from(endian + "I", data, 28)[0]
+                e_phentsize = struct.unpack_from(endian + "H", data, 42)[0]
+                e_phnum = struct.unpack_from(endian + "H", data, 44)[0]
+                ph_fmt = endian + "IIIIIIII"
+            else:
+                raise SystemExit(f"unsupported ELF class: {data[4]}")
 
-loads = []
-for i in range(e_phnum):
-    off = e_phoff + i * e_phentsize
-    fields = struct.unpack_from(ph_fmt, data, off)
-    if fields[0] == 1:
-        loads.append(fields[p_align_index])
+            loads = []
+            for i in range(e_phnum):
+                off = e_phoff + i * e_phentsize
+                fields = struct.unpack_from(ph_fmt, data, off)
+                if fields[0] == 1:
+                    loads.append(fields[7])
 
-if not loads:
-    raise SystemExit(f"{path}: no PT_LOAD program headers")
-print(f"{path}: {cls} PT_LOAD alignments: {[hex(x) for x in loads]}")
-if any(x != 0x4000 for x in loads):
-    raise SystemExit(f"{path}: expected every PT_LOAD p_align to be 0x4000")
-PY
+            if not loads:
+                raise SystemExit(f"{path}: no PT_LOAD program headers")
+            print(f"{path}: {cls} PT_LOAD alignments: {[hex(x) for x in loads]}")
+            if any(x != 0x4000 for x in loads):
+                raise SystemExit(f"{path}: expected every PT_LOAD p_align to be 0x4000")
+            PY
           done
 
       - name: Upload APK
