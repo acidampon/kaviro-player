@@ -1002,13 +1002,6 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         persistCurrentPosition();
         resumeAfterFocusLoss = false;
         resumeAfterLifecycle = false;
-        subtitleCues.clear();
-        runOnUiThread(() -> {
-            subtitlesLoaded = false;
-            subtitlesEnabled = true;
-            if (subtitlesButton != null) subtitlesButton.setText("Subs");
-            if (subtitleView != null) { subtitleView.setText(""); subtitleView.setVisibility(View.GONE); }
-        });
         if (nativePlayer != 0 && "playing".equals(nativeState(nativePlayer))) {
             nativePause(nativePlayer);
         }
@@ -1023,6 +1016,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             if (pfd != null && pfd.getFd() >= 0) {
                 final boolean opened = nativeOpenFd(nativePlayer, pfd.getFd());
                 if (opened) {
+                    clearExternalSubtitlesForNewMedia();
                     currentUri = candidateUri;
                     currentName = candidateName;
                     restoreSavedPosition(savedPosition);
@@ -1040,6 +1034,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             final File localFile = copyToCache(uri);
             final boolean opened = nativeOpen(nativePlayer, localFile.getAbsolutePath());
             if (opened) {
+                clearExternalSubtitlesForNewMedia();
                 currentUri = candidateUri;
                 currentName = candidateName;
                 restoreSavedPosition(savedPosition);
@@ -1056,6 +1051,19 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             refreshPlaybackUi();
             return false;
         }
+    }
+
+    private void clearExternalSubtitlesForNewMedia() {
+        subtitleCues.clear();
+        subtitlesLoaded = false;
+        subtitlesEnabled = true;
+        runOnUiThread(() -> {
+            if (subtitlesButton != null) subtitlesButton.setText("Subs");
+            if (subtitleView != null) {
+                subtitleView.setText("");
+                subtitleView.setVisibility(View.GONE);
+            }
+        });
     }
 
     private void restoreSavedPosition(long savedPosition) {
