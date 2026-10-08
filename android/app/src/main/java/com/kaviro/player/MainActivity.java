@@ -708,8 +708,36 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                     if (which == 0) {
                         final String uri = selected.optString("uri", null);
                         if (uri != null && !uri.isEmpty()) {
-                            removeQueueItem(uri);
-                            playbackHandler.post(() -> openUri(Uri.parse(uri)));
+                            final long durationMs = selected.optLong("durationMs", 0);
+                            playbackHandler.post(() -> {
+                                final boolean opened = openUri(Uri.parse(uri));
+                                if (!opened) {
+                                    runOnUiThread(() -> statusView.setText(
+                                            "Queue item failed to open: " + nativeLastError(nativePlayer)));
+                                    refreshPlaybackUi();
+                                    return;
+                                }
+                                removeQueueItem(uri);
+                                if (!requestAudioFocus()) {
+                                    addQueueItem(uri, name, durationMs);
+                                    runOnUiThread(() -> statusView.setText(
+                                            "Queue item opened but playback is waiting for audio focus"));
+                                    refreshPlaybackUi();
+                                    return;
+                                }
+                                if (nativePlay(nativePlayer)) {
+                                    playing = true;
+                                    playbackHandler.post(pumpTask);
+                                    runOnUiThread(() -> statusView.setText(
+                                            "Playing: " + name + "\nSession: " + nativeState(nativePlayer)));
+                                } else {
+                                    abandonAudioFocus();
+                                    addQueueItem(uri, name, durationMs);
+                                    runOnUiThread(() -> statusView.setText(
+                                            "Queue item failed to play: " + nativeLastError(nativePlayer)));
+                                }
+                                refreshPlaybackUi();
+                            });
                         }
                     } else if (which == 1) {
                         moveQueueItem(index, -1);
