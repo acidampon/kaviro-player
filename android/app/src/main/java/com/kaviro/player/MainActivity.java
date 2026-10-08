@@ -663,14 +663,14 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                     playbackHandler.post(() -> {
                         final boolean opened = openUri(Uri.parse(uri));
                         if (!opened) {
-                            addQueueItem(uri, selectedName, selected.optLong("durationMs", 0));
+                            restoreQueueItemAt(which, uri, selectedName, selected.optLong("durationMs", 0));
                             runOnUiThread(() -> statusView.setText(
                                     "Queue item failed to open: " + nativeLastError(nativePlayer)));
                             refreshPlaybackUi();
                             return;
                         }
                         if (!requestAudioFocus()) {
-                            addQueueItem(uri, selectedName, selected.optLong("durationMs", 0));
+                            restoreQueueItemAt(which, uri, selectedName, selected.optLong("durationMs", 0));
                             runOnUiThread(() -> statusView.setText(
                                     "Queue item opened but playback is waiting for audio focus"));
                             refreshPlaybackUi();
@@ -683,7 +683,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                                     "Playing: " + selectedName + "\nSession: " + nativeState(nativePlayer)));
                         } else {
                             abandonAudioFocus();
-                            addQueueItem(uri, selectedName, selected.optLong("durationMs", 0));
+                            restoreQueueItemAt(which, uri, selectedName, selected.optLong("durationMs", 0));
                             runOnUiThread(() -> statusView.setText(
                                     "Queue item failed to play: " + nativeLastError(nativePlayer)));
                         }
@@ -750,7 +750,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                                 }
                                 removeQueueItem(uri);
                                 if (!requestAudioFocus()) {
-                                    addQueueItem(uri, name, durationMs);
+                                    restoreQueueItemAt(index, uri, name, durationMs);
                                     runOnUiThread(() -> statusView.setText(
                                             "Queue item opened but playback is waiting for audio focus"));
                                     refreshPlaybackUi();
@@ -763,7 +763,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                                             "Playing: " + name + "\nSession: " + nativeState(nativePlayer)));
                                 } else {
                                     abandonAudioFocus();
-                                    addQueueItem(uri, name, durationMs);
+                                    restoreQueueItemAt(index, uri, name, durationMs);
                                     runOnUiThread(() -> statusView.setText(
                                             "Queue item failed to play: " + nativeLastError(nativePlayer)));
                                 }
