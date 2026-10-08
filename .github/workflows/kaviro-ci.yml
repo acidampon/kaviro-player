@@ -248,7 +248,7 @@ jobs:
 
             path = sys.argv[1]
             data = open(path, "rb").read()
-            if data[:4] != b"\\x7fELF":
+            if data[:4] != b"\x7fELF":
                 raise SystemExit(f"not an ELF file: {path}")
             if data[4] == 2:
                 cls = "ELF64"
