@@ -569,7 +569,8 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             }
             saveItems(QUEUE_KEY, restored);
             updateQueueSummary();
-        } catch (org.json.JSONException ignored) {}
+        } catch (org.json.JSONException ignored) {
+        }
     }
 
     private void dropFirstQueueItem() {
