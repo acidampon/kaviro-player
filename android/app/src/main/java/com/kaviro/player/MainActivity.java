@@ -14,16 +14,28 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.ParcelFileDescriptor;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.view.Gravity;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+import android.view.View;
 import android.view.ViewGroup;
+import android.widget.FrameLayout;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.FileOutputStream;
@@ -39,6 +51,17 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     private TextView queueSummaryView;
     private Button playPauseButton;
     private SurfaceView surfaceView;
+    private TextView subtitleView;
+    private final List<SubtitleCue> subtitleCues = new ArrayList<>();
+    private static final int REQUEST_OPEN_SUBTITLE = 1003;
+    private static final Pattern SRT_TIMING = Pattern.compile("(\\d{1,2}):(\\d{2}):(\\d{2})[,.](\\d{1,3})\\s*-->\\s*(\\d{1,2}):(\\d{2}):(\\d{2})[,.](\\d{1,3}).*");
+    private static final class SubtitleCue {
+        final long startMs, endMs;
+        final String text;
+        SubtitleCue(long startMs, long endMs, String text) {
+            this.startMs = startMs; this.endMs = endMs; this.text = text;
+        }
+    }
     private HandlerThread playbackThread;
     private Handler playbackHandler;
     private boolean playing;
@@ -64,6 +87,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         @Override public void run() {
             if (nativePlayer == 0) return;
             if (!userSeeking) updateTimeline();
+            updateSubtitleOverlay(nativePositionMs(nativePlayer));
             updatePlaybackControls();
             if (currentUri != null && System.currentTimeMillis() - lastPositionPersistMs >= 2000) {
                 persistCurrentPosition();
@@ -136,9 +160,27 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         final LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
 
+        FrameLayout videoContainer = new FrameLayout(this);
         surfaceView = new SurfaceView(this);
         surfaceView.getHolder().addCallback(this);
-        root.addView(surfaceView, new LinearLayout.LayoutParams(
+        videoContainer.addView(surfaceView, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        subtitleView = new TextView(this);
+        subtitleView.setTextColor(Color.WHITE);
+        subtitleView.setTextSize(20);
+        subtitleView.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        subtitleView.setGravity(Gravity.CENTER);
+        subtitleView.setMaxLines(3);
+        subtitleView.setShadowLayer(3f, 1f, 1f, Color.BLACK);
+        subtitleView.setBackgroundColor(Color.argb(170, 0, 0, 0));
+        subtitleView.setPadding(dp(12), dp(6), dp(12), dp(6));
+        subtitleView.setVisibility(View.GONE);
+        FrameLayout.LayoutParams subtitleParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        subtitleParams.setMargins(dp(12), 0, dp(12), dp(24));
+        videoContainer.addView(subtitleView, subtitleParams);
+        root.addView(videoContainer, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         final LinearLayout controls = new LinearLayout(this);
@@ -199,11 +241,16 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         video.setText("Video");
         video.setOnClickListener(v -> chooseTrack(false));
 
+        final Button subtitles = new Button(this);
+        subtitles.setText("Subs");
+        subtitles.setOnClickListener(v -> chooseSubtitleFile());
+
         controls.addView(open, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         controls.addView(playPauseButton, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         controls.addView(stop, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         controls.addView(audio, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         controls.addView(video, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        controls.addView(subtitles, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         root.addView(controls);
 
         final LinearLayout libraryControls = new LinearLayout(this);
@@ -424,12 +471,17 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if ((requestCode != REQUEST_OPEN_MEDIA && requestCode != REQUEST_QUEUE_MEDIA) ||
-                resultCode != RESULT_OK || data == null || data.getData() == null) {
+        if ((requestCode != REQUEST_OPEN_MEDIA && requestCode != REQUEST_QUEUE_MEDIA &&
+                requestCode != REQUEST_OPEN_SUBTITLE) || resultCode != RESULT_OK ||
+                data == null || data.getData() == null) {
             return;
         }
 
         final Uri uri = data.getData();
+        if (requestCode == REQUEST_OPEN_SUBTITLE) {
+            loadExternalSubtitles(uri);
+            return;
+        }
         try {
             final int takeFlags = data.getFlags() &
                     (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
@@ -447,6 +499,97 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         } else {
             playbackHandler.post(() -> openUri(uri));
         }
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private void chooseSubtitleFile() {
+        final Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        intent.setType("*/*");
+        startActivityForResult(intent, REQUEST_OPEN_SUBTITLE);
+    }
+
+    private void loadExternalSubtitles(Uri uri) {
+        playbackHandler.post(() -> {
+            final List<SubtitleCue> parsed = new ArrayList<>();
+            String failure = null;
+            try (InputStream input = getContentResolver().openInputStream(uri)) {
+                if (input == null) throw new IllegalStateException("The subtitle file could not be opened");
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
+                    String line;
+                    long start = -1, end = -1;
+                    StringBuilder cueText = new StringBuilder();
+                    while ((line = reader.readLine()) != null) {
+                        String trimmed = line.trim();
+                        Matcher timing = SRT_TIMING.matcher(trimmed);
+                        if (timing.matches()) {
+                            if (start >= 0 && end > start && cueText.length() > 0)
+                                parsed.add(new SubtitleCue(start, end, cueText.toString().trim()));
+                            start = parseSrtTime(timing, 1);
+                            end = parseSrtTime(timing, 5);
+                            cueText.setLength(0);
+                        } else if (trimmed.isEmpty()) {
+                            if (start >= 0 && end > start && cueText.length() > 0)
+                                parsed.add(new SubtitleCue(start, end, cueText.toString().trim()));
+                            start = -1; end = -1; cueText.setLength(0);
+                        } else if (start >= 0 && !trimmed.matches("\\d+")) {
+                            if (cueText.length() > 0) cueText.append('\n');
+                            cueText.append(trimmed);
+                        }
+                    }
+                    if (start >= 0 && end > start && cueText.length() > 0)
+                        parsed.add(new SubtitleCue(start, end, cueText.toString().trim()));
+                }
+            } catch (Exception e) {
+                failure = e.getMessage() == null ? "Could not read subtitle file" : e.getMessage();
+            }
+            if (failure == null && parsed.isEmpty()) failure = "No valid SRT subtitles found. Choose a SubRip (.srt) file.";
+            final String error = failure;
+            runOnUiThread(() -> {
+                if (error != null) {
+                    statusView.setText("Subtitle load failed: " + error);
+                    return;
+                }
+                Collections.sort(parsed, (left, right) -> Long.compare(left.startMs, right.startMs));
+                subtitleCues.clear();
+                subtitleCues.addAll(parsed);
+                statusView.setText("Loaded " + parsed.size() + " subtitle cues: " + queryDisplayName(uri));
+                updateSubtitleOverlay(nativePlayer == 0 ? 0 : nativePositionMs(nativePlayer));
+            });
+        });
+    }
+
+    private long parseSrtTime(Matcher matcher, int group) {
+        long hours = Long.parseLong(matcher.group(group));
+        long minutes = Long.parseLong(matcher.group(group + 1));
+        long seconds = Long.parseLong(matcher.group(group + 2));
+        String fraction = matcher.group(group + 3);
+        long millis = Long.parseLong(fraction) * (fraction.length() == 1 ? 100 : fraction.length() == 2 ? 10 : 1);
+        return (((hours * 60 + minutes) * 60) + seconds) * 1000 + millis;
+    }
+
+    private void updateSubtitleOverlay(long positionMs) {
+        if (subtitleView == null) return;
+        String visibleText = null;
+        for (SubtitleCue cue : subtitleCues) {
+            if (positionMs < cue.startMs) break;
+            if (positionMs < cue.endMs) { visibleText = cue.text; break; }
+        }
+        final String text = visibleText;
+        runOnUiThread(() -> {
+            if (subtitleView == null) return;
+            if (text == null || text.isEmpty()) {
+                subtitleView.setText("");
+                subtitleView.setVisibility(View.GONE);
+            } else {
+                subtitleView.setText(text);
+                subtitleView.setVisibility(View.VISIBLE);
+            }
+        });
     }
 
     private String queryDisplayName(Uri uri) {
@@ -832,6 +975,10 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         persistCurrentPosition();
         resumeAfterFocusLoss = false;
         resumeAfterLifecycle = false;
+        subtitleCues.clear();
+        runOnUiThread(() -> {
+            if (subtitleView != null) { subtitleView.setText(""); subtitleView.setVisibility(View.GONE); }
+        });
         if (nativePlayer != 0 && "playing".equals(nativeState(nativePlayer))) {
             nativePause(nativePlayer);
         }
