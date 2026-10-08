@@ -926,8 +926,10 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                     playing = true;
                     playbackHandler.post(pumpTask);
                     statusView.setText("Playback resumed\nSession: " + nativeState(nativePlayer));
-                    refreshPlaybackUi();
+                } else {
+                    statusView.setText("Playback resume failed: " + nativeLastError(nativePlayer));
                 }
+                refreshPlaybackUi();
             }
             return;
         }
@@ -935,17 +937,23 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         if (focusChange == AudioManager.AUDIOFOCUS_LOSS ||
                 focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT ||
                 focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) {
-            if (playing) {
+            // Permanent focus loss must never leave a stale auto-resume request.
+            // Transient loss (including duck requests) pauses and may resume on gain.
+            if (focusChange == AudioManager.AUDIOFOCUS_LOSS) {
+                resumeAfterFocusLoss = false;
+            } else if (playing) {
                 resumeAfterFocusLoss = true;
+            }
+            if (playing) {
                 playing = false;
                 playbackHandler.removeCallbacks(pumpTask);
                 if (nativePlayer != 0) nativePause(nativePlayer);
             }
             hasAudioFocus = false;
-            if (focusChange != AudioManager.AUDIOFOCUS_LOSS) {
-                statusView.setText("Paused for audio focus\nSession: " + nativeState(nativePlayer));
-                refreshPlaybackUi();
-            }
+            statusView.setText(focusChange == AudioManager.AUDIOFOCUS_LOSS
+                    ? "Paused after permanent audio focus loss\nSession: " + nativeState(nativePlayer)
+                    : "Paused for audio focus\nSession: " + nativeState(nativePlayer));
+            refreshPlaybackUi();
         }
     }
 
