@@ -57,19 +57,8 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     private Button subtitlesButton;
     private volatile boolean subtitlesEnabled = true;
     private boolean subtitlesLoaded;
-    private final List<SubtitleCue> subtitleCues = new ArrayList<>();
+    private final List<SrtSubtitleParser.Cue> subtitleCues = new ArrayList<>();
     private static final int REQUEST_OPEN_SUBTITLE = 1003;
-    private static final int MAX_EXTERNAL_SRT_BYTES = 5 * 1024 * 1024;
-    private static final int MAX_EXTERNAL_SRT_CUES = 10000;
-    private static final int MAX_EXTERNAL_SRT_CUE_CHARS = 4000;
-    private static final Pattern SRT_TIMING = Pattern.compile("(\\d{1,2}):(\\d{2}):(\\d{2})[,.](\\d{1,3})\\s*-->\\s*(\\d{1,2}):(\\d{2}):(\\d{2})[,.](\\d{1,3}).*");
-    private static final class SubtitleCue {
-        final long startMs, endMs;
-        final String text;
-        SubtitleCue(long startMs, long endMs, String text) {
-            this.startMs = startMs; this.endMs = endMs; this.text = text;
-        }
-    }
     private HandlerThread playbackThread;
     private Handler playbackHandler;
     private boolean playing;
@@ -536,64 +525,33 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
 
     private void loadExternalSubtitles(Uri uri) {
         playbackHandler.post(() -> {
-            final List<SubtitleCue> parsed = new ArrayList<>();
+            List<SrtSubtitleParser.Cue> parsed = null;
             String failure = null;
             try (InputStream input = getContentResolver().openInputStream(uri)) {
                 if (input == null) throw new IllegalStateException("The subtitle file could not be opened");
-                final byte[] contents;
                 try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
                     byte[] buffer = new byte[8192];
                     int read;
                     int total = 0;
                     while ((read = input.read(buffer)) != -1) {
                         total += read;
-                        if (total > MAX_EXTERNAL_SRT_BYTES) {
+                        if (total > SrtSubtitleParser.MAX_BYTES) {
                             throw new IllegalArgumentException("Subtitle file is too large (maximum 5 MB)");
                         }
                         output.write(buffer, 0, read);
                     }
-                    contents = output.toByteArray();
-                }
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-                        new java.io.ByteArrayInputStream(contents), StandardCharsets.UTF_8))) {
-                    String line;
-                    long start = -1, end = -1;
-                    StringBuilder cueText = new StringBuilder();
-                    while ((line = reader.readLine()) != null) {
-                        String trimmed = line.trim();
-                        Matcher timing = SRT_TIMING.matcher(trimmed);
-                        if (timing.matches()) {
-                            appendSubtitleCue(parsed, start, end, cueText);
-                            start = parseSrtTime(timing, 1);
-                            end = parseSrtTime(timing, 5);
-                            cueText.setLength(0);
-                        } else if (trimmed.isEmpty()) {
-                            appendSubtitleCue(parsed, start, end, cueText);
-                            start = -1;
-                            end = -1;
-                            cueText.setLength(0);
-                        } else if (start >= 0) {
-                            final int extraChars = trimmed.length() + (cueText.length() > 0 ? 1 : 0);
-                            if (cueText.length() + extraChars > MAX_EXTERNAL_SRT_CUE_CHARS) {
-                                throw new IllegalArgumentException("A subtitle cue is too long (maximum 4,000 characters)");
-                            }
-                            if (cueText.length() > 0) cueText.append('\n');
-                            cueText.append(trimmed);
-                        }
-                    }
-                    appendSubtitleCue(parsed, start, end, cueText);
+                    parsed = SrtSubtitleParser.parse(output.toByteArray());
                 }
             } catch (Exception e) {
                 failure = e.getMessage() == null ? "Could not read subtitle file" : e.getMessage();
             }
-            if (failure == null && parsed.isEmpty()) failure = "No valid SRT subtitles found. Choose a SubRip (.srt) file.";
+            final List<SrtSubtitleParser.Cue> loaded = parsed;
             final String error = failure;
             if (error == null) {
-                Collections.sort(parsed, (left, right) -> Long.compare(left.startMs, right.startMs));
                 // Cue state is owned by the playback handler so subtitle refreshes
                 // never race the loader while it replaces the active cue list.
                 subtitleCues.clear();
-                subtitleCues.addAll(parsed);
+                subtitleCues.addAll(loaded);
             }
             runOnUiThread(() -> {
                 if (error != null) {
@@ -603,28 +561,10 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                 subtitlesLoaded = true;
                 subtitlesEnabled = true;
                 if (subtitlesButton != null) subtitlesButton.setText("Subs On");
-                statusView.setText("Loaded " + parsed.size() + " subtitle cues: " + queryDisplayName(uri));
+                statusView.setText("Loaded " + loaded.size() + " subtitle cues: " + queryDisplayName(uri));
             });
             if (error == null) updateSubtitleOverlay(nativePlayer == 0 ? 0 : nativePositionMs(nativePlayer));
         });
-    }
-
-    private void appendSubtitleCue(List<SubtitleCue> parsed, long start, long end, StringBuilder cueText) {
-        if (start < 0 || end <= start || cueText.length() == 0) return;
-        if (parsed.size() >= MAX_EXTERNAL_SRT_CUES) {
-            throw new IllegalArgumentException("Subtitle file contains too many cues (maximum 10,000)");
-        }
-        final String text = cueText.toString().trim();
-        if (!text.isEmpty()) parsed.add(new SubtitleCue(start, end, text));
-    }
-
-    private long parseSrtTime(Matcher matcher, int group) {
-        long hours = Long.parseLong(matcher.group(group));
-        long minutes = Long.parseLong(matcher.group(group + 1));
-        long seconds = Long.parseLong(matcher.group(group + 2));
-        String fraction = matcher.group(group + 3);
-        long millis = Long.parseLong(fraction) * (fraction.length() == 1 ? 100 : fraction.length() == 2 ? 10 : 1);
-        return (((hours * 60 + minutes) * 60) + seconds) * 1000 + millis;
     }
 
     private void updateSubtitleOverlay(long positionMs) {
@@ -634,7 +574,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             return;
         }
         String visibleText = null;
-        for (SubtitleCue cue : subtitleCues) {
+        for (SrtSubtitleParser.Cue cue : subtitleCues) {
             if (positionMs < cue.startMs) break;
             if (positionMs < cue.endMs) { visibleText = cue.text; break; }
         }
