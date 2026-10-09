@@ -204,6 +204,9 @@ jobs:
             cp -L "$(find "$BUILD/prefix" -name "libswscale.so" -print -quit)" "$PREFIX/libswscale.so.10"
           done
 
+      - name: Run Android unit tests
+        working-directory: android
+        run: gradle :app:testDebugUnitTest --no-daemon
       - name: Assemble debug APK
         working-directory: android
         run: gradle :app:assembleDebug --no-daemon
