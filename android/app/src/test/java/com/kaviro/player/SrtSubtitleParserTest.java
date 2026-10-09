@@ -24,6 +24,13 @@ public class SrtSubtitleParserTest {
         assertEquals(4789L, cues.get(1).endMs);
     }
 
+    @Test public void acceptsUtf8BomAndWindowsLineEndings() {
+        List<SrtSubtitleParser.Cue> cues = SrtSubtitleParser.parse(utf8(
+                "\uFEFF1\r\n00:00:00,000 --> 00:00:01,000\r\nCaption\r\n"));
+        assertEquals(1, cues.size());
+        assertEquals("Caption", cues.get(0).text);
+    }
+
     @Test public void preservesMultilineAndNumericOnlyDialogue() {
         List<SrtSubtitleParser.Cue> cues = SrtSubtitleParser.parse(utf8(
                 "00:00:00,000 --> 00:00:01,000\nHello\nworld\n\n" +
