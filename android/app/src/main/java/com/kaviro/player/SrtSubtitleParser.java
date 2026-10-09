@@ -33,7 +33,7 @@ public final class SrtSubtitleParser {
         if (contents == null) throw new IllegalArgumentException("Subtitle file is empty");
         if (contents.length > MAX_BYTES) throw new IllegalArgumentException("Subtitle file is too large (maximum 5 MB)");
         String source = new String(contents, StandardCharsets.UTF_8);
-        if (source.startsWith("\\uFEFF")) source = source.substring(1);
+        if (source.startsWith("\uFEFF")) source = source.substring(1);
         String[] lines = source.split("\\r?\\n", -1);
         List<Cue> cues = new ArrayList<>();
         long start = -1, end = -1;
