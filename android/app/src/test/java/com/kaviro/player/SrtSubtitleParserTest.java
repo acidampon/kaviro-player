@@ -47,6 +47,15 @@ public class SrtSubtitleParserTest {
         assertEquals("Later", cues.get(1).text);
     }
 
+    @Test public void ignoresImpossibleMinuteAndSecondValues() {
+        List<SrtSubtitleParser.Cue> cues = SrtSubtitleParser.parse(utf8(
+                "00:60:00,000 --> 00:60:01,000\nInvalid minute\n\n" +
+                "00:00:60,000 --> 00:01:01,000\nInvalid second\n\n" +
+                "00:00:00,000 --> 00:00:01,000\nValid cue\n"));
+        assertEquals(1, cues.size());
+        assertEquals("Valid cue", cues.get(0).text);
+    }
+
     @Test public void ignoresMalformedAndNonIncreasingCuesButRequiresOneValidCue() {
         List<SrtSubtitleParser.Cue> cues = SrtSubtitleParser.parse(utf8(
                 "not a timestamp\nignored\n\n" +
@@ -58,7 +67,7 @@ public class SrtSubtitleParserTest {
     }
 
     @Test public void rejectsCueTextOverLimit() {
-        String longLine = new String(new char[SrtSubtitleParser.MAX_CUE_CHARS + 1]).replace('\0', 'x');
+        String longLine = new String(new char[SrtSubtitleParser.MAX_CUE_CHARS + 1]).replace('\\0', 'x');
         expectFailure("cue is too long", () -> SrtSubtitleParser.parse(utf8(
                 "00:00:00,000 --> 00:00:01,000\n" + longLine)));
     }
