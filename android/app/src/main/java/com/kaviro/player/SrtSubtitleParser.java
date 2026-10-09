@@ -43,9 +43,15 @@ public final class SrtSubtitleParser {
             Matcher timing = TIMING.matcher(trimmed);
             if (timing.matches()) {
                 appendCue(cues, start, end, cueText);
+                cueText.setLength(0);
+                if (!hasValidClockFields(timing, 1) || !hasValidClockFields(timing, 5)) {
+                    // Ignore impossible timestamps instead of interpreting their dialogue as a cue.
+                    start = -1;
+                    end = -1;
+                    continue;
+                }
                 start = parseTime(timing, 1);
                 end = parseTime(timing, 5);
-                cueText.setLength(0);
             } else if (trimmed.isEmpty()) {
                 appendCue(cues, start, end, cueText);
                 start = -1;
@@ -64,6 +70,12 @@ public final class SrtSubtitleParser {
         if (cues.isEmpty()) throw new IllegalArgumentException("No valid SRT subtitles found. Choose a SubRip (.srt) file.");
         Collections.sort(cues, Comparator.comparingLong(cue -> cue.startMs));
         return Collections.unmodifiableList(cues);
+    }
+
+    private static boolean hasValidClockFields(Matcher matcher, int group) {
+        int minutes = Integer.parseInt(matcher.group(group + 1));
+        int seconds = Integer.parseInt(matcher.group(group + 2));
+        return minutes < 60 && seconds < 60;
     }
 
     private static void appendCue(List<Cue> cues, long start, long end, StringBuilder cueText) {
