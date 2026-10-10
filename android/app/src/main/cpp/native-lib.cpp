@@ -233,6 +233,7 @@ Java_com_kaviro_player_MainActivity_nativeState(JNIEnv* env, jclass, jlong handl
         case ump::native::NativeEngineState::Open: return makeString(env, "open");
         case ump::native::NativeEngineState::Playing: return makeString(env, "playing");
         case ump::native::NativeEngineState::Paused: return makeString(env, "paused");
+        case ump::native::NativeEngineState::Ended: return makeString(env, "ended");
         case ump::native::NativeEngineState::Error: return makeString(env, "error");
         case ump::native::NativeEngineState::Closed: return makeString(env, "closed");
     }

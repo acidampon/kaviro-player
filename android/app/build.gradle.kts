@@ -25,6 +25,10 @@ android {
         }
     }
 
+    testOptions {
+        unitTests.isIncludeAndroidResources = false
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -37,4 +41,8 @@ android {
             version = "3.31.6"
         }
     }
+}
+
+dependencies {
+    testImplementation("junit:junit:4.13.2")
 }

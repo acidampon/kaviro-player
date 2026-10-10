@@ -51,20 +51,27 @@ NativeMediaEngine::~NativeMediaEngine() {
 }
 
 bool NativeMediaEngine::open(const std::filesystem::path& path, bool recoveryMode) {
-    close();
-    error_.clear();
-
+    // Probe the replacement separately so a failed open cannot destroy a
+    // working current session. The caller can safely retry or resume it.
+    FfmpegMediaSession candidate;
     FfmpegOpenOptions options;
     options.hardwareDecodePreferred =
         hardwareMode_ != HardwareDecodeMode::Disabled;
     options.recoveryMode = recoveryMode;
 
-    if (!session_.open(path, options)) {
-        error_ = session_.lastError();
-        state_ = NativeEngineState::Error;
+    if (!candidate.open(path, options)) {
+        error_ = candidate.lastError();
         return false;
     }
 
+    // The candidate is now known-good. Only at this point replace the
+    // current session, and reset platform outputs so buffered frames and any
+    // hardware audio clock from the previous media cannot leak into the new
+    // timeline.
+    if (videoOutput_ != nullptr) videoOutput_->reset();
+    if (audioOutput_ != nullptr) audioOutput_->reset();
+    session_ = std::move(candidate);
+    error_.clear();
     state_ = NativeEngineState::Open;
     clock_ = {};
     clock_.speed = speed_;
@@ -99,6 +106,26 @@ bool NativeMediaEngine::play() {
     }
     if (state_ == NativeEngineState::Error) {
         return false;
+    }
+
+    // Natural EOF leaves the demuxer at end-of-stream. Treat Play from Ended
+    // as an explicit restart from the beginning rather than immediately
+    // returning to Ended on the next pump.
+    if (state_ == NativeEngineState::Ended) {
+        if (!session_.seekMs(0)) {
+            error_ = session_.lastError();
+            state_ = NativeEngineState::Error;
+            return false;
+        }
+        if (videoOutput_ != nullptr) videoOutput_->reset();
+        if (audioOutput_ != nullptr) audioOutput_->reset();
+        pendingVideo_ = false;
+        pendingVideoFrame_ = {};
+        clock_ = {};
+        clock_.speed = speed_;
+        clock_.paused = true;
+        clockInitialized_ = true;
+        error_.clear();
     }
 
     const auto now = std::chrono::steady_clock::now();
@@ -185,10 +212,14 @@ bool NativeMediaEngine::seekMs(std::int64_t positionMs) {
         : positionMs * 1000;
     clock_.wallUs = 0;
     clock_.speed = speed_;
-    clock_.paused = state_ != NativeEngineState::Playing;
+    const bool wasPlaying = state_ == NativeEngineState::Playing;
+    clock_.paused = !wasPlaying;
     clockWall_ = std::chrono::steady_clock::now();
     clockInitialized_ = true;
-    if (state_ == NativeEngineState::Error) {
+    // A successful seek is a new playback position. In particular, seeking
+    // from natural EOF must leave Ended so Play resumes from the requested
+    // position rather than treating the next Play as an explicit replay.
+    if (!wasPlaying) {
         state_ = NativeEngineState::Paused;
     }
     return true;
@@ -243,6 +274,8 @@ std::int64_t NativeMediaEngine::durationMs() const noexcept {
 
 
 bool NativeMediaEngine::selectAudioTrack(int streamIndex) {
+    const bool wasPlaying = state_ == NativeEngineState::Playing;
+    const std::int64_t positionUs = std::max<std::int64_t>(0, clock_.mediaUs);
     if (!session_.selectAudioTrack(streamIndex)) {
         error_ = session_.lastError();
         if (session_.isOpen()) state_ = NativeEngineState::Error;
@@ -251,11 +284,22 @@ bool NativeMediaEngine::selectAudioTrack(int streamIndex) {
     if (audioOutput_ != nullptr) audioOutput_->reset();
     pendingVideo_ = false;
     pendingVideoFrame_ = {};
+    // Resetting the audio device also resets its hardware clock. Keep the
+    // media timeline anchored at the pre-switch position so video does not
+    // jump back to the beginning on the next pump.
+    clock_.mediaUs = positionUs;
+    clock_.wallUs = 0;
+    clock_.speed = speed_;
+    clock_.paused = !wasPlaying;
+    clockWall_ = std::chrono::steady_clock::now();
+    clockInitialized_ = true;
     error_.clear();
     return true;
 }
 
 bool NativeMediaEngine::selectVideoTrack(int streamIndex) {
+    const bool wasPlaying = state_ == NativeEngineState::Playing;
+    const std::int64_t positionUs = std::max<std::int64_t>(0, clock_.mediaUs);
     if (!session_.selectVideoTrack(streamIndex)) {
         error_ = session_.lastError();
         if (session_.isOpen()) state_ = NativeEngineState::Error;
@@ -264,6 +308,12 @@ bool NativeMediaEngine::selectVideoTrack(int streamIndex) {
     if (videoOutput_ != nullptr) videoOutput_->reset();
     pendingVideo_ = false;
     pendingVideoFrame_ = {};
+    clock_.mediaUs = positionUs;
+    clock_.wallUs = 0;
+    clock_.speed = speed_;
+    clock_.paused = !wasPlaying;
+    clockWall_ = std::chrono::steady_clock::now();
+    clockInitialized_ = true;
     error_.clear();
     return true;
 }
@@ -449,6 +499,12 @@ bool NativeMediaEngine::pump(std::size_t maxFrames) {
             return false;
         }
 
+        if (session_.ended()) {
+            state_ = NativeEngineState::Ended;
+            clock_.paused = true;
+            return false;
+        }
+
         state_ = NativeEngineState::Paused;
         clock_.paused = true;
         return false;
@@ -460,6 +516,10 @@ bool NativeMediaEngine::pump(std::size_t maxFrames) {
 
 FfmpegRecoveryOutcome NativeMediaEngine::recoveryOutcome() const noexcept {
     return session_.recoveryOutcome();
+}
+
+bool NativeMediaEngine::ended() const noexcept {
+    return state_ == NativeEngineState::Ended;
 }
 
 NativeEngineState NativeMediaEngine::state() const noexcept {
