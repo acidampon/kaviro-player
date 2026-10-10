@@ -67,7 +67,7 @@ public class SrtSubtitleParserTest {
     }
 
     @Test public void rejectsCueTextOverLimit() {
-        String longLine = new String(new char[SrtSubtitleParser.MAX_CUE_CHARS + 1]).replace('\\0', 'x');
+        String longLine = new String(new char[SrtSubtitleParser.MAX_CUE_CHARS + 1]).replace('\0', 'x');
         expectFailure("cue is too long", () -> SrtSubtitleParser.parse(utf8(
                 "00:00:00,000 --> 00:00:01,000\n" + longLine)));
     }
