@@ -21,11 +21,14 @@ public final class SrtSubtitleParser {
         public final long startMs;
         public final long endMs;
         public final String text;
+        // Maximum end time among this cue and all cues before it, for interval lookup.
+        final long prefixMaxEndMs;
 
-        Cue(long startMs, long endMs, String text) {
+        Cue(long startMs, long endMs, String text, long prefixMaxEndMs) {
             this.startMs = startMs;
             this.endMs = endMs;
             this.text = text;
+            this.prefixMaxEndMs = prefixMaxEndMs;
         }
     }
 
@@ -69,7 +72,40 @@ public final class SrtSubtitleParser {
         appendCue(cues, start, end, cueText);
         if (cues.isEmpty()) throw new IllegalArgumentException("No valid SRT subtitles found. Choose a SubRip (.srt) file.");
         Collections.sort(cues, Comparator.comparingLong(cue -> cue.startMs));
-        return Collections.unmodifiableList(cues);
+
+        // Build a prefix maximum so lookups can skip expired history without
+        // rescanning every cue on each playback UI refresh.
+        List<Cue> indexed = new ArrayList<>(cues.size());
+        long maxEndMs = Long.MIN_VALUE;
+        for (Cue cue : cues) {
+            maxEndMs = Math.max(maxEndMs, cue.endMs);
+            indexed.add(new Cue(cue.startMs, cue.endMs, cue.text, maxEndMs));
+        }
+        return Collections.unmodifiableList(indexed);
+    }
+
+    /**
+     * Returns the latest-starting cue active at positionMs, or null when no cue
+     * is active. Cue starts are inclusive and ends are exclusive.
+     */
+    static Cue findActiveCue(List<Cue> cues, long positionMs) {
+        if (cues == null || cues.isEmpty()) return null;
+
+        // Upper-bound search: first cue whose start is greater than the position.
+        int low = 0;
+        int high = cues.size();
+        while (low < high) {
+            int mid = low + (high - low) / 2;
+            if (cues.get(mid).startMs <= positionMs) low = mid + 1;
+            else high = mid;
+        }
+
+        // Prefix maximum lets us stop as soon as no earlier cue can still overlap.
+        for (int i = low - 1; i >= 0 && cues.get(i).prefixMaxEndMs > positionMs; --i) {
+            Cue cue = cues.get(i);
+            if (positionMs < cue.endMs) return cue;
+        }
+        return null;
     }
 
     private static boolean hasValidClockFields(Matcher matcher, int group) {
@@ -85,7 +121,7 @@ public final class SrtSubtitleParser {
         if (cues.size() >= MAX_CUES) {
             throw new IllegalArgumentException("Subtitle file contains too many cues (maximum 10,000)");
         }
-        cues.add(new Cue(start, end, text));
+        cues.add(new Cue(start, end, text, Long.MIN_VALUE));
     }
 
     private static long parseTime(Matcher matcher, int group) {
