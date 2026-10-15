@@ -573,12 +573,9 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             runOnUiThread(() -> { if (subtitleView != null) subtitleView.setVisibility(View.GONE); });
             return;
         }
-        String visibleText = null;
-        for (SrtSubtitleParser.Cue cue : subtitleCues) {
-            if (positionMs < cue.startMs) break;
-            if (positionMs < cue.endMs) { visibleText = cue.text; break; }
-        }
-        final String text = visibleText;
+        final SrtSubtitleParser.Cue activeCue =
+                SrtSubtitleParser.findActiveCue(subtitleCues, positionMs);
+        final String text = activeCue == null ? null : activeCue.text;
         runOnUiThread(() -> {
             if (subtitleView == null) return;
             if (text == null || text.isEmpty()) {
