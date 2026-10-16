@@ -49,8 +49,8 @@ public class SrtSubtitleParserTest {
 
     @Test public void findsCueAtInclusiveStartAndExclusiveEndBoundaries() {
         List<SrtSubtitleParser.Cue> cues = SrtSubtitleParser.parse(utf8(
-                "00:00:01,000 --> 00:00:02,000\\nFirst\\n\\n" +
-                "00:00:03,000 --> 00:00:04,000\\nSecond\\n"));
+                "00:00:01,000 --> 00:00:02,000\nFirst\n\n" +
+                "00:00:03,000 --> 00:00:04,000\nSecond\n"));
         assertEquals(null, SrtSubtitleParser.findActiveCue(cues, 999));
         assertEquals("First", SrtSubtitleParser.findActiveCue(cues, 1000).text);
         assertEquals(null, SrtSubtitleParser.findActiveCue(cues, 2000));
@@ -60,8 +60,8 @@ public class SrtSubtitleParserTest {
 
     @Test public void latestStartedCueWinsOverlapsAndEarlierCueRemainsAvailable() {
         List<SrtSubtitleParser.Cue> cues = SrtSubtitleParser.parse(utf8(
-                "00:00:01,000 --> 00:00:10,000\\nLong cue\\n\\n" +
-                "00:00:02,000 --> 00:00:03,000\\nShort overlap\\n"));
+                "00:00:01,000 --> 00:00:10,000\nLong cue\n\n" +
+                "00:00:02,000 --> 00:00:03,000\nShort overlap\n"));
         assertEquals("Long cue", SrtSubtitleParser.findActiveCue(cues, 1500).text);
         assertEquals("Short overlap", SrtSubtitleParser.findActiveCue(cues, 2500).text);
         assertEquals("Long cue", SrtSubtitleParser.findActiveCue(cues, 3500).text);
