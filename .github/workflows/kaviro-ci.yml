@@ -114,6 +114,20 @@ jobs:
       - name: Test
         working-directory: build/windows-core
         run: ctest -C Release --output-on-failure
+      - name: Stage Windows player
+        shell: pwsh
+        run: |
+          $stage = Join-Path $env:GITHUB_WORKSPACE "build/windows-release"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item "build/windows-core/Release/kaviro_windows_player.exe" $stage
+          $sqlite = Join-Path $env:VCPKG_INSTALLATION_ROOT "installed/x64-windows/bin/sqlite3.dll"
+          if (Test-Path $sqlite) { Copy-Item $sqlite $stage }
+      - name: Upload Windows desktop player
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaviro-windows-desktop-unsigned
+          path: build/windows-release/*
+          if-no-files-found: error
 
   android:
     name: Android APK
@@ -143,6 +157,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.6.0"
+      - name: Run Android unit tests
+        working-directory: android
+        run: gradle :app:testDebugUnitTest --no-daemon
       - name: Fetch and verify pinned FFmpeg source
         shell: bash
         run: |
@@ -206,10 +223,17 @@ jobs:
 
       - name: Assemble debug APK
         working-directory: android
-        run: gradle :app:assembleDebug --no-daemon
+        run: gradle :app:assembleDebug :app:assembleRelease --no-daemon
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: kaviro-android-debug
           path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Upload unsigned release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaviro-android-release-unsigned
+          path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error

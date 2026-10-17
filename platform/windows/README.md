@@ -1,24 +1,22 @@
-# KAVIRO Windows Shell
+# KAVIRO Windows Player
 
-Planned first-class Windows desktop application shell.
+KAVIRO now includes a native Win32 desktop shell in `app/windows_main.cpp`. The Windows CMake build produces `kaviro_windows_player` in addition to the portable core/CLI.
 
-The shell is intentionally kept separate from `ump_core` so Windows APIs cannot leak into the portable core.
+## Current desktop controls
 
-## Current status
+- Open a local media file with the Windows file picker.
+- Play/pause and stop.
+- Seek using the timeline slider.
+- Render video in the main playback area and resize it with the window.
+- Use Windows Media Foundation for system-provided decoding and playback.
 
-**Contract prepared; native Windows build not yet verified in the current environment.**
+## Important scope
 
-Required build environment for the first real build:
-- Windows SDK
-- MSVC or a supported Windows C++ toolchain
-- Native media engine integration
+This is the first functional Windows desktop playback shell, not yet a claim of universal codec coverage or a bundled FFmpeg Windows release. Supported media depends on the Windows Media Foundation codecs installed on the target system. The Windows CI build verifies that the application compiles and that the portable core tests pass; actual Windows playback still requires a Windows runtime test with representative audio and video files.
 
-## First implementation surface
+## Next Windows release checks
 
-1. File/folder picker
-2. Library screen backed by `LibraryCatalog` + `LibraryDashboardBuilder`
-3. Player window backed by `PlayerSession`
-4. Drag-and-drop media
-5. Fullscreen/window controls
-6. System media transport controls
-7. Hardware acceleration
+1. Run the desktop app on Windows and test open, play/pause, stop, seeking, resize, and close while playing.
+2. Verify codec and document-path behavior; record unsupported formats clearly.
+3. Add track/subtitle controls and integrate the bundled FFmpeg engine where needed.
+4. Package the app and required dependencies and verify a clean-machine installation.
