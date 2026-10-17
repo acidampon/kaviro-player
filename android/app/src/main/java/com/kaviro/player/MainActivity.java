@@ -76,6 +76,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     private long lastPositionPersistMs;
     private static final int MAX_RECENT_ITEMS = 20;
     private static final int MAX_QUEUE_ITEMS = 50;
+    private static final long STALE_MEDIA_CACHE_AGE_MS = 7L * 24 * 60 * 60 * 1000;
     private static final String PREFS_NAME = "kaviro_library_v1";
     private static final String RECENTS_KEY = "recent_items";
     private static final String QUEUE_KEY = "queue_items";
@@ -141,6 +142,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        cleanupStaleMediaCacheFiles();
         nativePlayer = nativeCreate();
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         libraryPrefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
@@ -1054,6 +1056,22 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         if (duration <= 0) return;
         final long safe = Math.min(savedPosition, Math.max(0, duration - 1000));
         if (safe > 0) nativeSeekMs(nativePlayer, safe);
+    }
+
+    private void cleanupStaleMediaCacheFiles() {
+        final File cacheDir = getCacheDir();
+        final File[] files = cacheDir.listFiles((dir, name) ->
+                name.startsWith("kaviro-") && name.endsWith(".media"));
+        if (files == null || files.length == 0) return;
+        final long cutoff = System.currentTimeMillis() - STALE_MEDIA_CACHE_AGE_MS;
+        for (File file : files) {
+            // Only remove old fallback copies. Recent files may still belong to
+            // an active playback session during an Activity recreation.
+            if (file.isFile() && file.lastModified() < cutoff) {
+                //noinspection ResultOfMethodCallIgnored
+                file.delete();
+            }
+        }
     }
 
     private File copyToCache(Uri uri) throws Exception {
