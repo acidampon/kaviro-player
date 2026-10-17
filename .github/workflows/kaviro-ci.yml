@@ -114,6 +114,20 @@ jobs:
       - name: Test
         working-directory: build/windows-core
         run: ctest -C Release --output-on-failure
+      - name: Stage Windows player
+        shell: pwsh
+        run: |
+          $stage = Join-Path $env:GITHUB_WORKSPACE "build/windows-release"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item "build/windows-core/Release/kaviro_windows_player.exe" $stage
+          $sqlite = Join-Path $env:VCPKG_INSTALLATION_ROOT "installed/x64-windows/bin/sqlite3.dll"
+          if (Test-Path $sqlite) { Copy-Item $sqlite $stage }
+      - name: Upload Windows desktop player
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaviro-windows-desktop-unsigned
+          path: build/windows-release/*
+          if-no-files-found: error
 
   android:
     name: Android APK
