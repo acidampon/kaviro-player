@@ -1212,7 +1212,11 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
 
     @Override
     public void surfaceDestroyed(SurfaceHolder holder) {
-        queueNativeSurfaceUpdate(null);
+        // Android requires rendering to stop touching the Surface before this
+        // callback returns. nativeSetSurface shares the player mutex with pump,
+        // so this waits for any in-flight frame before releasing the native window.
+        final long handle = nativePlayer;
+        if (handle != 0) nativeSetSurface(handle, null);
     }
 
     @Override
