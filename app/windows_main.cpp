@@ -10,6 +10,7 @@
 #include <shlwapi.h>
 #include <algorithm>
 #include <cstdint>
+#include <cwchar>
 #include <iterator>
 #include <string>
 
@@ -175,13 +176,18 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
 }
 } // namespace
 
-int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR commandLine, int showCommand) {
     INITCOMMONCONTROLSEX controls{sizeof(controls), ICC_BAR_CLASSES};
     InitCommonControlsEx(&controls);
     const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     if (FAILED(com) && com != RPC_E_CHANGED_MODE) return 1;
     const HRESULT mf = MFStartup(MF_VERSION);
     if (FAILED(mf)) { if (SUCCEEDED(com)) CoUninitialize(); return 2; }
+    if (commandLine && std::wcsstr(commandLine, L"--smoke-test")) {
+        MFShutdown();
+        if (SUCCEEDED(com)) CoUninitialize();
+        return 0;
+    }
     WNDCLASSEXW wc{};
     wc.cbSize = sizeof(wc);
     wc.hInstance = instance;
