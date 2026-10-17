@@ -72,6 +72,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     private SharedPreferences libraryPrefs;
     private String currentUri;
     private String currentName;
+    private File currentCachedMediaFile;
     private long lastPositionPersistMs;
     private static final int MAX_RECENT_ITEMS = 20;
     private static final int MAX_QUEUE_ITEMS = 50;
@@ -988,6 +989,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             if (pfd != null && pfd.getFd() >= 0) {
                 final boolean opened = nativeOpenFd(nativePlayer, pfd.getFd());
                 if (opened) {
+                    replaceCurrentCachedMediaFile(null);
                     clearExternalSubtitlesForNewMedia();
                     currentUri = candidateUri;
                     currentName = candidateName;
@@ -1006,7 +1008,15 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             final File localFile = copyToCache(uri);
             final boolean opened = nativeOpen(nativePlayer, localFile.getAbsolutePath());
             if (opened) {
+                replaceCurrentCachedMediaFile(localFile);
                 clearExternalSubtitlesForNewMedia();
+            } else {
+                // A failed candidate must not leave a large orphaned cache file.
+                // Keep the previous media's cache until a replacement opens successfully.
+                //noinspection ResultOfMethodCallIgnored
+                localFile.delete();
+            }
+            if (opened) {
                 currentUri = candidateUri;
                 currentName = candidateName;
                 restoreSavedPosition(savedPosition);
@@ -1047,18 +1057,37 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     }
 
     private File copyToCache(Uri uri) throws Exception {
-        String name = "kaviro-" + System.currentTimeMillis() + ".media";
-        File target = new File(getCacheDir(), name);
+        final File target = File.createTempFile("kaviro-", ".media", getCacheDir());
+        boolean complete = false;
         try (InputStream input = getContentResolver().openInputStream(uri);
              FileOutputStream output = new FileOutputStream(target)) {
             if (input == null) throw new IllegalStateException("Unable to read selected media");
-            byte[] buffer = new byte[1024 * 1024];
+            byte[] buffer = new byte[64 * 1024];
             int read;
             while ((read = input.read(buffer)) != -1) {
                 output.write(buffer, 0, read);
             }
+            output.flush();
+            complete = true;
+            return target;
+        } finally {
+            if (!complete) {
+                // Do not strand a partial copy if the provider or storage fails.
+                //noinspection ResultOfMethodCallIgnored
+                target.delete();
+            }
         }
-        return target;
+    }
+
+    private void replaceCurrentCachedMediaFile(File nextFile) {
+        final File previous = currentCachedMediaFile;
+        currentCachedMediaFile = nextFile;
+        if (previous != null && !previous.equals(nextFile)) {
+            // Native open has already succeeded before this is called, so the
+            // old cached input is no longer needed by the active media session.
+            //noinspection ResultOfMethodCallIgnored
+            previous.delete();
+        }
     }
 
     private boolean requestAudioFocus() {
