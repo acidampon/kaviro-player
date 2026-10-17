@@ -63,6 +63,10 @@ if(UMP_BUILD_TESTS)
   target_link_libraries(kaviro_playback_clock_tests PRIVATE ump_core)
   add_test(NAME kaviro_playback_clock_tests COMMAND kaviro_playback_clock_tests)
 
+  if(WIN32)
+    add_test(NAME kaviro_windows_player_smoke COMMAND kaviro_windows_player --smoke-test)
+  endif()
+
   if(KAVIRO_FFMPEG_NATIVE)
     add_executable(kaviro_native_decode_smoke tests/native_decode_smoke.cpp)
     target_link_libraries(kaviro_native_decode_smoke PRIVATE ump_core)
