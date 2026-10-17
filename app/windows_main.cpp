@@ -1,6 +1,7 @@
 #define UNICODE
 #define _UNICODE
 #define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
 #include <windows.h>
 #include <commdlg.h>
 #include <commctrl.h>
@@ -48,11 +49,6 @@ void layoutControls(HWND hwnd) {
     if (GetDlgItem(hwnd, kStopId)) MoveWindow(GetDlgItem(hwnd, kStopId), 176, controlsY + 5, 64, 28, TRUE);
     if (g_seek) MoveWindow(g_seek, 248, controlsY + 7, std::max(40, width - 420), 24, TRUE);
     if (g_status) MoveWindow(g_status, std::max(250, width - 164), controlsY + 5, 156, 28, TRUE);
-    if (g_player && g_video) {
-        RECT videoRect{};
-        GetClientRect(g_video, &videoRect);
-        g_player->SetVideoPosition(nullptr, &videoRect);
-    }
 }
 
 void releasePlayer() {
@@ -97,12 +93,14 @@ void openMedia(HWND hwnd) {
     SetWindowTextW(hwnd, (L"KAVIRO Player — " + title).c_str());
     setStatus(L"Playing");
     layoutControls(hwnd);
-    MFTIME duration = 0;
-    if (SUCCEEDED(g_player->GetDuration(&duration)) && duration > 0) {
-        const auto seconds = static_cast<int>(std::min<MFTIME>(duration / 10000000, 2147483647));
+    PROPVARIANT duration;
+    PropVariantInit(&duration);
+    if (SUCCEEDED(g_player->GetDuration(&duration)) && duration.vt == VT_I8 && duration.hVal.QuadPart > 0) {
+        const auto seconds = static_cast<int>(std::min<LONGLONG>(duration.hVal.QuadPart / 10000000LL, 2147483647LL));
         SendMessageW(g_seek, TBM_SETRANGE, TRUE, MAKELONG(0, std::max(1, seconds)));
         SendMessageW(g_seek, TBM_SETPOS, TRUE, 0);
     }
+    PropVariantClear(&duration);
     SetTimer(hwnd, kTimerId, 250, nullptr);
 }
 
@@ -160,9 +158,11 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
         return 0;
     case WM_TIMER:
         if (wParam == kTimerId && g_player && !g_dragging) {
-            MFTIME position = 0;
-            if (SUCCEEDED(g_player->GetPosition(&position)) && position >= 0)
-                SendMessageW(g_seek, TBM_SETPOS, TRUE, static_cast<LPARAM>(std::min<MFTIME>(position / 10000000, 2147483647)));
+            PROPVARIANT position;
+            PropVariantInit(&position);
+            if (SUCCEEDED(g_player->GetPosition(&position)) && position.vt == VT_I8 && position.hVal.QuadPart >= 0)
+                SendMessageW(g_seek, TBM_SETPOS, TRUE, static_cast<LPARAM>(std::min<LONGLONG>(position.hVal.QuadPart / 10000000LL, 2147483647LL)));
+            PropVariantClear(&position);
         }
         return 0;
     case WM_DESTROY:
