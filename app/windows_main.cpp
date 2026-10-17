@@ -27,12 +27,33 @@ HWND g_window = nullptr;
 HWND g_video = nullptr;
 HWND g_status = nullptr;
 HWND g_seek = nullptr;
+HWND g_time = nullptr;
 IMFPMediaPlayer* g_player = nullptr;
 bool g_dragging = false;
+LONGLONG g_duration100ns = 0;
 std::wstring g_currentPath;
 
 void setStatus(const std::wstring& text) {
     if (g_status) SetWindowTextW(g_status, text.c_str());
+}
+
+std::wstring formatTime(LONGLONG ticks) {
+    const auto totalSeconds = static_cast<unsigned long long>(std::max<LONGLONG>(0, ticks) / 10000000LL);
+    const auto hours = totalSeconds / 3600ULL;
+    const auto minutes = (totalSeconds / 60ULL) % 60ULL;
+    const auto seconds = totalSeconds % 60ULL;
+    wchar_t buffer[32]{};
+    if (hours > 0) {
+        swprintf_s(buffer, L"%llu:%02llu:%02llu", hours, minutes, seconds);
+    } else {
+        swprintf_s(buffer, L"%02llu:%02llu", minutes, seconds);
+    }
+    return buffer;
+}
+
+void updateTimeLabel(LONGLONG position100ns) {
+    if (!g_time) return;
+    SetWindowTextW(g_time, (formatTime(position100ns) + L" / " + formatTime(g_duration100ns)).c_str());
 }
 
 void layoutControls(HWND hwnd) {
@@ -48,7 +69,9 @@ void layoutControls(HWND hwnd) {
     if (GetDlgItem(hwnd, kPlayId)) MoveWindow(GetDlgItem(hwnd, kPlayId), 92, controlsY + 5, 78, 28, TRUE);
     if (GetDlgItem(hwnd, kStopId)) MoveWindow(GetDlgItem(hwnd, kStopId), 176, controlsY + 5, 64, 28, TRUE);
     if (g_seek) MoveWindow(g_seek, 248, controlsY + 7, std::max(40, width - 420), 24, TRUE);
+    if (g_time) MoveWindow(g_time, std::max(250, width - 280), controlsY + 5, 108, 28, TRUE);
     if (g_status) MoveWindow(g_status, std::max(250, width - 164), controlsY + 5, 156, 28, TRUE);
+    if (g_seek) MoveWindow(g_seek, 248, controlsY + 7, std::max(40, width - 550), 24, TRUE);
 }
 
 void releasePlayer() {
@@ -80,27 +103,42 @@ void openMedia(HWND hwnd) {
         return;
     }
     IMFPMediaPlayer* candidate = nullptr;
-    const HRESULT hr = MFPCreateMediaPlayer(url, TRUE, 0, nullptr, g_video, &candidate);
+    const HRESULT hr = MFPCreateMediaPlayer(url, FALSE, 0, nullptr, g_video, &candidate);
     if (FAILED(hr) || !candidate) {
         setStatus(L"Open failed (codec or file)");
         return;
     }
+
+    // Do not interrupt the current item until the replacement has been created.
     releasePlayer();
     g_player = candidate;
     g_currentPath = path;
+    g_duration100ns = 0;
+    SendMessageW(g_seek, TBM_SETRANGE, TRUE, MAKELONG(0, 1));
+    SendMessageW(g_seek, TBM_SETPOS, TRUE, 0);
+    updateTimeLabel(0);
     const auto slash = g_currentPath.find_last_of(L"\\/");
     const auto title = slash == std::wstring::npos ? g_currentPath : g_currentPath.substr(slash + 1);
     SetWindowTextW(hwnd, (L"KAVIRO Player — " + title).c_str());
-    setStatus(L"Playing");
     layoutControls(hwnd);
+
     PROPVARIANT duration;
     PropVariantInit(&duration);
     if (SUCCEEDED(g_player->GetDuration(MFP_POSITIONTYPE_100NS, &duration)) && duration.vt == VT_I8 && duration.hVal.QuadPart > 0) {
-        const auto seconds = static_cast<int>(std::min<LONGLONG>(duration.hVal.QuadPart / 10000000LL, 2147483647LL));
+        g_duration100ns = duration.hVal.QuadPart;
+        const auto seconds = static_cast<int>(std::min<LONGLONG>(g_duration100ns / 10000000LL, 2147483647LL));
         SendMessageW(g_seek, TBM_SETRANGE, TRUE, MAKELONG(0, std::max(1, seconds)));
-        SendMessageW(g_seek, TBM_SETPOS, TRUE, 0);
     }
     PropVariantClear(&duration);
+
+    const HRESULT playResult = g_player->Play();
+    if (FAILED(playResult)) {
+        releasePlayer();
+        setStatus(L"Playback could not start");
+        return;
+    }
+    setStatus(L"Playing");
+    updateTimeLabel(0);
     SetTimer(hwnd, kTimerId, 250, nullptr);
 }
 
@@ -124,7 +162,8 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
         CreateWindowExW(0, L"BUTTON", L"Play / Pause", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 92, 430, 78, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kPlayId)), GetModuleHandleW(nullptr), nullptr);
         CreateWindowExW(0, L"BUTTON", L"Stop", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 176, 430, 64, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kStopId)), GetModuleHandleW(nullptr), nullptr);
         g_seek = CreateWindowExW(0, TRACKBAR_CLASSW, L"", WS_CHILD | WS_VISIBLE | TBS_HORZ | TBS_NOTICKS, 248, 432, 280, 24, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kSeekId)), GetModuleHandleW(nullptr), nullptr);
-        g_status = CreateWindowExW(0, L"STATIC", L"Ready", WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE, 540, 430, 156, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kStatusId)), GetModuleHandleW(nullptr), nullptr);
+        g_time = CreateWindowExW(0, L"STATIC", L"00:00 / 00:00", WS_CHILD | WS_VISIBLE | SS_CENTER | SS_CENTERIMAGE, 680, 430, 108, 28, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
+        g_status = CreateWindowExW(0, L"STATIC", L"Ready", WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE, 796, 430, 156, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kStatusId)), GetModuleHandleW(nullptr), nullptr);
         SendMessageW(g_seek, TBM_SETRANGE, TRUE, MAKELONG(0, 1));
         layoutControls(hwnd);
         return 0;
@@ -144,7 +183,12 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
             } else openMedia(hwnd);
             return 0;
         case kStopId:
-            if (g_player) { g_player->Stop(); setStatus(L"Stopped"); SendMessageW(g_seek, TBM_SETPOS, TRUE, 0); }
+            if (g_player) {
+                g_player->Stop();
+                setStatus(L"Stopped");
+                SendMessageW(g_seek, TBM_SETPOS, TRUE, 0);
+                updateTimeLabel(0);
+            }
             return 0;
         default: break;
         }
@@ -160,8 +204,11 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
         if (wParam == kTimerId && g_player && !g_dragging) {
             PROPVARIANT position;
             PropVariantInit(&position);
-            if (SUCCEEDED(g_player->GetPosition(MFP_POSITIONTYPE_100NS, &position)) && position.vt == VT_I8 && position.hVal.QuadPart >= 0)
-                SendMessageW(g_seek, TBM_SETPOS, TRUE, static_cast<LPARAM>(std::min<LONGLONG>(position.hVal.QuadPart / 10000000LL, 2147483647LL)));
+            if (SUCCEEDED(g_player->GetPosition(MFP_POSITIONTYPE_100NS, &position)) && position.vt == VT_I8 && position.hVal.QuadPart >= 0) {
+                const auto position100ns = position.hVal.QuadPart;
+                SendMessageW(g_seek, TBM_SETPOS, TRUE, static_cast<LPARAM>(std::min<LONGLONG>(position100ns / 10000000LL, 2147483647LL)));
+                updateTimeLabel(position100ns);
+            }
             PropVariantClear(&position);
         }
         return 0;
