@@ -95,7 +95,7 @@ void openMedia(HWND hwnd) {
     layoutControls(hwnd);
     PROPVARIANT duration;
     PropVariantInit(&duration);
-    if (SUCCEEDED(g_player->GetDuration(&duration)) && duration.vt == VT_I8 && duration.hVal.QuadPart > 0) {
+    if (SUCCEEDED(g_player->GetDuration(MFP_POSITIONTYPE_100NS, &duration)) && duration.vt == VT_I8 && duration.hVal.QuadPart > 0) {
         const auto seconds = static_cast<int>(std::min<LONGLONG>(duration.hVal.QuadPart / 10000000LL, 2147483647LL));
         SendMessageW(g_seek, TBM_SETRANGE, TRUE, MAKELONG(0, std::max(1, seconds)));
         SendMessageW(g_seek, TBM_SETPOS, TRUE, 0);
@@ -110,7 +110,7 @@ void seekToSlider() {
     PropVariantInit(&position);
     position.vt = VT_I8;
     position.hVal.QuadPart = static_cast<LONGLONG>(SendMessageW(g_seek, TBM_GETPOS, 0, 0)) * 10000000LL;
-    const HRESULT hr = g_player->SetPosition(GUID_NULL, &position);
+    const HRESULT hr = g_player->SetPosition(MFP_POSITIONTYPE_100NS, &position);
     PropVariantClear(&position);
     if (FAILED(hr)) setStatus(L"Seek failed");
 }
@@ -160,7 +160,7 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
         if (wParam == kTimerId && g_player && !g_dragging) {
             PROPVARIANT position;
             PropVariantInit(&position);
-            if (SUCCEEDED(g_player->GetPosition(&position)) && position.vt == VT_I8 && position.hVal.QuadPart >= 0)
+            if (SUCCEEDED(g_player->GetPosition(MFP_POSITIONTYPE_100NS, &position)) && position.vt == VT_I8 && position.hVal.QuadPart >= 0)
                 SendMessageW(g_seek, TBM_SETPOS, TRUE, static_cast<LPARAM>(std::min<LONGLONG>(position.hVal.QuadPart / 10000000LL, 2147483647LL)));
             PropVariantClear(&position);
         }
