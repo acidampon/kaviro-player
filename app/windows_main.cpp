@@ -10,6 +10,7 @@
 #include <shlwapi.h>
 #include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <string>
 
 namespace {
@@ -119,7 +120,7 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
     switch (message) {
     case WM_CREATE:
         g_window = hwnd;
-        g_video = CreateWindowExW(0, L"STATIC", L"Open a media file to begin", WS_CHILD | WS_VISIBLE | SS_CENTER | SS_CENTERIMAGE, 0, 0, 640, 420, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
+        g_video = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_CENTER | SS_CENTERIMAGE, 0, 0, 640, 420, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
         CreateWindowExW(0, L"BUTTON", L"Open file", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 8, 430, 78, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kOpenId)), GetModuleHandleW(nullptr), nullptr);
         CreateWindowExW(0, L"BUTTON", L"Play / Pause", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 92, 430, 78, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kPlayId)), GetModuleHandleW(nullptr), nullptr);
         CreateWindowExW(0, L"BUTTON", L"Stop", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 176, 430, 64, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kStopId)), GetModuleHandleW(nullptr), nullptr);
