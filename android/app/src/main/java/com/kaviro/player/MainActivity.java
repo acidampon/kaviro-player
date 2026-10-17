@@ -48,7 +48,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         System.loadLibrary("kaviro_android");
     }
 
-    private long nativePlayer;
+    private volatile long nativePlayer;
     private TextView statusView;
     private TextView queueSummaryView;
     private Button playPauseButton;
@@ -1274,16 +1274,28 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         resumeAfterLifecycle = false;
         abandonAudioFocus();
         if (playbackHandler != null) playbackHandler.removeCallbacksAndMessages(null);
-        if (playbackThread != null) {
+
+        // Release the native engine on the playback thread, after any in-flight
+        // pump has returned. A timed join must never let nativeRelease race a
+        // decoder call that is still using the same player handle.
+        final long handle = nativePlayer;
+        nativePlayer = 0;
+        if (playbackHandler != null && playbackThread != null) {
+            playbackHandler.post(() -> {
+                if (handle != 0) nativeRelease(handle);
+                // The engine is now released, so its private fallback input is safe to delete.
+                replaceCurrentCachedMediaFile(null);
+            });
             playbackThread.quitSafely();
-            try { playbackThread.join(2000); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+            try {
+                playbackThread.join(2000);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+        } else {
+            if (handle != 0) nativeRelease(handle);
+            replaceCurrentCachedMediaFile(null);
         }
-        if (nativePlayer != 0) {
-            nativeRelease(nativePlayer);
-            nativePlayer = 0;
-        }
-        // The native session is released, so a private fallback copy is no longer needed.
-        replaceCurrentCachedMediaFile(null);
         super.onDestroy();
     }
 }
