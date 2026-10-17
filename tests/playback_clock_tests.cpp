@@ -11,7 +11,7 @@ int main() {
     clock.speed = 8.0;
     clock.paused = false;
 
-    const auto advanced = ump::advancePlaybackClock(clock, 500'000);
+    auto advanced = ump::advancePlaybackClock(clock, 500'000);
     assert(advanced.mediaUs == 5'000'000);
     assert(advanced.wallUs == 500'000);
 
