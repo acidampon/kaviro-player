@@ -7,8 +7,11 @@
 #include <cstdint>
 #include <filesystem>
 #include <cstdio>
+#include <atomic>
+#include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 
 namespace {
 
@@ -31,8 +34,16 @@ struct AndroidPlayer {
     }
 };
 
-AndroidPlayer* fromHandle(jlong handle) {
-    return reinterpret_cast<AndroidPlayer*>(static_cast<std::uintptr_t>(handle));
+std::mutex registryMutex;
+std::unordered_map<std::uintptr_t, std::shared_ptr<AndroidPlayer>> players;
+std::atomic<std::uintptr_t> nextHandle{1};
+
+std::shared_ptr<AndroidPlayer> fromHandle(jlong handle) {
+    if (handle <= 0) return {};
+    const auto key = static_cast<std::uintptr_t>(handle);
+    std::lock_guard<std::mutex> lock(registryMutex);
+    const auto found = players.find(key);
+    return found == players.end() ? std::shared_ptr<AndroidPlayer>{} : found->second;
 }
 
 jstring makeString(JNIEnv* env, const std::string& value) {
@@ -43,21 +54,30 @@ jstring makeString(JNIEnv* env, const std::string& value) {
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_kaviro_player_MainActivity_nativeCreate(JNIEnv*, jclass) {
-    return static_cast<jlong>(
-        reinterpret_cast<std::uintptr_t>(new AndroidPlayer()));
+    auto player = std::make_shared<AndroidPlayer>();
+    const auto handle = nextHandle.fetch_add(1, std::memory_order_relaxed);
+    if (handle == 0) return 0;
+    {
+        std::lock_guard<std::mutex> lock(registryMutex);
+        players.emplace(handle, std::move(player));
+    }
+    return static_cast<jlong>(handle);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_kaviro_player_MainActivity_nativeRelease(JNIEnv*, jclass, jlong handle) {
-    auto* player = fromHandle(handle);
-    if (player == nullptr) return;
-    delete player;
+    if (handle <= 0) return;
+    // Removing the registry entry prevents new calls from acquiring the player.
+    // Calls already in flight own shared_ptr references, so destruction waits
+    // until the last call has left its critical section instead of racing JNI.
+    std::lock_guard<std::mutex> lock(registryMutex);
+    players.erase(static_cast<std::uintptr_t>(handle));
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_kaviro_player_MainActivity_nativeOpen(
     JNIEnv* env, jclass, jlong handle, jstring path) {
-    auto* player = fromHandle(handle);
+    auto player = fromHandle(handle);
     if (player == nullptr || path == nullptr) return JNI_FALSE;
 
     const char* rawPath = env->GetStringUTFChars(path, nullptr);
@@ -72,7 +92,7 @@ Java_com_kaviro_player_MainActivity_nativeOpen(
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_kaviro_player_MainActivity_nativeOpenFd(
     JNIEnv*, jclass, jlong handle, jint fd) {
-    auto* player = fromHandle(handle);
+    auto player = fromHandle(handle);
     if (player == nullptr || fd < 0) return JNI_FALSE;
 
     const std::string procPath = std::string("/proc/self/fd/") + std::to_string(fd);
@@ -83,7 +103,7 @@ Java_com_kaviro_player_MainActivity_nativeOpenFd(
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_kaviro_player_MainActivity_nativeSetSurface(
     JNIEnv* env, jclass, jlong handle, jobject surface) {
-    auto* player = fromHandle(handle);
+    auto player = fromHandle(handle);
     if (player == nullptr) return JNI_FALSE;
 
     std::lock_guard<std::mutex> lock(player->mutex);
@@ -97,7 +117,7 @@ Java_com_kaviro_player_MainActivity_nativeSetSurface(
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_kaviro_player_MainActivity_nativePlay(JNIEnv*, jclass, jlong handle) {
-    auto* player = fromHandle(handle);
+    auto player = fromHandle(handle);
     if (player == nullptr) return JNI_FALSE;
     std::lock_guard<std::mutex> lock(player->mutex);
     return player->engine.play() ? JNI_TRUE : JNI_FALSE;
@@ -105,7 +125,7 @@ Java_com_kaviro_player_MainActivity_nativePlay(JNIEnv*, jclass, jlong handle) {
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_kaviro_player_MainActivity_nativePause(JNIEnv*, jclass, jlong handle) {
-    auto* player = fromHandle(handle);
+    auto player = fromHandle(handle);
     if (player == nullptr) return JNI_FALSE;
     std::lock_guard<std::mutex> lock(player->mutex);
     return player->engine.pause() ? JNI_TRUE : JNI_FALSE;
@@ -114,7 +134,7 @@ Java_com_kaviro_player_MainActivity_nativePause(JNIEnv*, jclass, jlong handle) {
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_kaviro_player_MainActivity_nativeStop(
     JNIEnv*, jclass, jlong handle) {
-    auto* player = fromHandle(handle);
+    auto player = fromHandle(handle);
     if (player == nullptr) return JNI_FALSE;
     std::lock_guard<std::mutex> lock(player->mutex);
     return player->engine.stop() ? JNI_TRUE : JNI_FALSE;
@@ -123,7 +143,7 @@ Java_com_kaviro_player_MainActivity_nativeStop(
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_kaviro_player_MainActivity_nativeSeekMs(
     JNIEnv*, jclass, jlong handle, jlong positionMs) {
-    auto* player = fromHandle(handle);
+    auto player = fromHandle(handle);
     if (player == nullptr) return JNI_FALSE;
     std::lock_guard<std::mutex> lock(player->mutex);
     return player->engine.seekMs(static_cast<std::int64_t>(positionMs)) ? JNI_TRUE : JNI_FALSE;
@@ -132,7 +152,7 @@ Java_com_kaviro_player_MainActivity_nativeSeekMs(
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_kaviro_player_MainActivity_nativePositionMs(
     JNIEnv*, jclass, jlong handle) {
-    auto* player = fromHandle(handle);
+    auto player = fromHandle(handle);
     if (player == nullptr) return 0;
     std::lock_guard<std::mutex> lock(player->mutex);
     return static_cast<jlong>(player->engine.positionMs());
@@ -141,7 +161,7 @@ Java_com_kaviro_player_MainActivity_nativePositionMs(
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_kaviro_player_MainActivity_nativeDurationMs(
     JNIEnv*, jclass, jlong handle) {
-    auto* player = fromHandle(handle);
+    auto player = fromHandle(handle);
     if (player == nullptr) return 0;
     std::lock_guard<std::mutex> lock(player->mutex);
     return static_cast<jlong>(player->engine.durationMs());
@@ -150,7 +170,7 @@ Java_com_kaviro_player_MainActivity_nativeDurationMs(
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_kaviro_player_MainActivity_nativePump(
     JNIEnv*, jclass, jlong handle, jint maxFrames) {
-    auto* player = fromHandle(handle);
+    auto player = fromHandle(handle);
     if (player == nullptr || maxFrames < 0) return JNI_FALSE;
     std::lock_guard<std::mutex> lock(player->mutex);
     return player->engine.pump(static_cast<std::size_t>(maxFrames)) ? JNI_TRUE : JNI_FALSE;
@@ -159,7 +179,7 @@ Java_com_kaviro_player_MainActivity_nativePump(
 
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_com_kaviro_player_MainActivity_nativeVideoTracks(JNIEnv* env, jclass, jlong handle) {
-    auto* player = fromHandle(handle);
+    auto player = fromHandle(handle);
     if (player == nullptr) return nullptr;
     std::lock_guard<std::mutex> lock(player->mutex);
     const auto tracks = player->engine.tracks();
@@ -184,7 +204,7 @@ Java_com_kaviro_player_MainActivity_nativeVideoTracks(JNIEnv* env, jclass, jlong
 
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_com_kaviro_player_MainActivity_nativeAudioTracks(JNIEnv* env, jclass, jlong handle) {
-    auto* player = fromHandle(handle);
+    auto player = fromHandle(handle);
     if (player == nullptr) return nullptr;
     std::lock_guard<std::mutex> lock(player->mutex);
     const auto tracks = player->engine.tracks();
@@ -209,7 +229,7 @@ Java_com_kaviro_player_MainActivity_nativeAudioTracks(JNIEnv* env, jclass, jlong
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_kaviro_player_MainActivity_nativeSelectAudioTrack(JNIEnv*, jclass, jlong handle, jint streamIndex) {
-    auto* player = fromHandle(handle);
+    auto player = fromHandle(handle);
     if (player == nullptr) return JNI_FALSE;
     std::lock_guard<std::mutex> lock(player->mutex);
     return player->engine.selectAudioTrack(static_cast<int>(streamIndex)) ? JNI_TRUE : JNI_FALSE;
@@ -217,7 +237,7 @@ Java_com_kaviro_player_MainActivity_nativeSelectAudioTrack(JNIEnv*, jclass, jlon
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_kaviro_player_MainActivity_nativeSelectVideoTrack(JNIEnv*, jclass, jlong handle, jint streamIndex) {
-    auto* player = fromHandle(handle);
+    auto player = fromHandle(handle);
     if (player == nullptr) return JNI_FALSE;
     std::lock_guard<std::mutex> lock(player->mutex);
     return player->engine.selectVideoTrack(static_cast<int>(streamIndex)) ? JNI_TRUE : JNI_FALSE;
@@ -225,7 +245,7 @@ Java_com_kaviro_player_MainActivity_nativeSelectVideoTrack(JNIEnv*, jclass, jlon
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_kaviro_player_MainActivity_nativeState(JNIEnv* env, jclass, jlong handle) {
-    auto* player = fromHandle(handle);
+    auto player = fromHandle(handle);
     if (player == nullptr) return makeString(env, "closed");
 
     std::lock_guard<std::mutex> lock(player->mutex);
@@ -242,7 +262,7 @@ Java_com_kaviro_player_MainActivity_nativeState(JNIEnv* env, jclass, jlong handl
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_kaviro_player_MainActivity_nativeLastError(JNIEnv* env, jclass, jlong handle) {
-    auto* player = fromHandle(handle);
+    auto player = fromHandle(handle);
     if (player == nullptr) return makeString(env, "player handle is invalid");
     std::lock_guard<std::mutex> lock(player->mutex);
     return makeString(env, player->engine.lastError());
