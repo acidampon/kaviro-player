@@ -210,6 +210,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                 final long duration = nativeDurationMs(nativePlayer);
                 if (duration <= 0) {
                     updateTimeline();
+                    updateSubtitleOverlay(nativePlayer == 0 ? 0 : nativePositionMs(nativePlayer));
                     return;
                 }
                 final int maxProgress = Math.max(1, bar.getMax());
@@ -220,8 +221,10 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                 final boolean ok = nativeSeekMs(nativePlayer, clamped);
                 if (!ok) {
                     statusView.setText("Seek failed: " + nativeLastError(nativePlayer));
+                    updateSubtitleOverlay(nativePositionMs(nativePlayer));
                 } else {
                     updateTimeline();
+                    updateSubtitleOverlay(clamped);
                     statusView.setText("Position: " + formatMs(clamped) +
                             " / " + formatMs(duration) + "\nSession: " + nativeState(nativePlayer));
                 }
