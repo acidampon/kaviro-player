@@ -1264,6 +1264,8 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             nativeRelease(nativePlayer);
             nativePlayer = 0;
         }
+        // The native session is released, so a private fallback copy is no longer needed.
+        replaceCurrentCachedMediaFile(null);
         super.onDestroy();
     }
 }
