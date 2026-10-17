@@ -31,6 +31,20 @@ endif()
 add_executable(kaviro_player app/main.cpp)
 target_link_libraries(kaviro_player PRIVATE ump_core)
 
+if(WIN32)
+  add_executable(kaviro_windows_player WIN32 app/windows_main.cpp)
+  target_link_libraries(kaviro_windows_player PRIVATE
+    ump_core
+    mfplay
+    mfplat
+    mfuuid
+    shlwapi
+    comdlg32
+    comctl32
+    ole32
+  )
+endif()
+
 if(UMP_BUILD_TESTS)
   enable_testing()
   add_executable(kaviro_core_tests tests/core_tests.cpp)
