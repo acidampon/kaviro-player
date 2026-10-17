@@ -1186,19 +1186,33 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         }
     }
 
+    private void queueNativeSurfaceUpdate(Surface surface) {
+        final Handler handler = playbackHandler;
+        if (handler == null) return;
+        handler.post(() -> {
+            final long handle = nativePlayer;
+            if (handle == 0) return;
+            // Surface callbacks can arrive while a decode/pump call is active.
+            // Serialize native window changes with playback work and never attach
+            // a Surface that Android has already invalidated.
+            final Surface validSurface = surface != null && surface.isValid() ? surface : null;
+            nativeSetSurface(handle, validSurface);
+        });
+    }
+
     @Override
     public void surfaceCreated(SurfaceHolder holder) {
-        if (nativePlayer != 0) nativeSetSurface(nativePlayer, holder.getSurface());
+        queueNativeSurfaceUpdate(holder.getSurface());
     }
 
     @Override
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-        if (nativePlayer != 0) nativeSetSurface(nativePlayer, holder.getSurface());
+        queueNativeSurfaceUpdate(holder.getSurface());
     }
 
     @Override
     public void surfaceDestroyed(SurfaceHolder holder) {
-        if (nativePlayer != 0) nativeSetSurface(nativePlayer, null);
+        queueNativeSurfaceUpdate(null);
     }
 
     @Override
