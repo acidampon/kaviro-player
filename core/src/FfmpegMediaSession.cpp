@@ -43,7 +43,40 @@ struct FfmpegMediaSession::Impl {};
 #endif
 
 FfmpegMediaSession::FfmpegMediaSession() : impl_(new Impl) {}
+
 FfmpegMediaSession::~FfmpegMediaSession() { close(); delete impl_; }
+
+FfmpegMediaSession::FfmpegMediaSession(FfmpegMediaSession&& other)
+    : impl_(other.impl_),
+      streams_(std::move(other.streams_)),
+      error_(std::move(other.error_)),
+      recovery_(other.recovery_),
+      open_(other.open_) {
+    other.impl_ = new Impl;
+    other.streams_.clear();
+    other.error_.clear();
+    other.recovery_ = FfmpegRecoveryOutcome::NotAttempted;
+    other.open_ = false;
+}
+
+FfmpegMediaSession& FfmpegMediaSession::operator=(FfmpegMediaSession&& other) {
+    if (this == &other) return *this;
+
+    close();
+    delete impl_;
+    impl_ = other.impl_;
+    streams_ = std::move(other.streams_);
+    error_ = std::move(other.error_);
+    recovery_ = other.recovery_;
+    open_ = other.open_;
+
+    other.impl_ = new Impl;
+    other.streams_.clear();
+    other.error_.clear();
+    other.recovery_ = FfmpegRecoveryOutcome::NotAttempted;
+    other.open_ = false;
+    return *this;
+}
 
 #if defined(KAVIRO_FFMPEG_NATIVE)
 
@@ -383,6 +416,13 @@ void FfmpegMediaSession::close() {
 }
 
 bool FfmpegMediaSession::isOpen() const { return open_; }
+bool FfmpegMediaSession::ended() const noexcept {
+#if defined(KAVIRO_FFMPEG_NATIVE)
+    return open_ && impl_ && impl_->demuxEof;
+#else
+    return false;
+#endif
+}
 std::string FfmpegMediaSession::lastError() const { return error_; }
 const std::vector<FfmpegStreamInfo>& FfmpegMediaSession::streams() const { return streams_; }
 

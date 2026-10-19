@@ -8,7 +8,7 @@
 
 namespace ump::native {
 enum class HardwareDecodeMode { Disabled, Preferred, Required };
-enum class NativeEngineState { Closed, Open, Playing, Paused, Error };
+enum class NativeEngineState { Closed, Open, Playing, Paused, Ended, Error };
 
 struct NativeTrack {
     int streamIndex{-1};
@@ -58,6 +58,7 @@ public:
     void attachAudioOutput(AudioOutput*) noexcept;
     void detachAudioOutput(AudioOutput*) noexcept;
     bool pump(std::size_t maxFrames=0);
+    bool ended() const noexcept;
     FfmpegRecoveryOutcome recoveryOutcome() const noexcept;
     NativeEngineState state() const noexcept;
     std::string lastError() const;

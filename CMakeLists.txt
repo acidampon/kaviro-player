@@ -31,6 +31,20 @@ endif()
 add_executable(kaviro_player app/main.cpp)
 target_link_libraries(kaviro_player PRIVATE ump_core)
 
+if(WIN32)
+  add_executable(kaviro_windows_player WIN32 app/windows_main.cpp)
+  target_link_libraries(kaviro_windows_player PRIVATE
+    ump_core
+    mfplay
+    mfplat
+    mfuuid
+    shlwapi
+    comdlg32
+    comctl32
+    ole32
+  )
+endif()
+
 if(UMP_BUILD_TESTS)
   enable_testing()
   add_executable(kaviro_core_tests tests/core_tests.cpp)
@@ -48,6 +62,10 @@ if(UMP_BUILD_TESTS)
   add_executable(kaviro_playback_clock_tests tests/playback_clock_tests.cpp)
   target_link_libraries(kaviro_playback_clock_tests PRIVATE ump_core)
   add_test(NAME kaviro_playback_clock_tests COMMAND kaviro_playback_clock_tests)
+
+  if(WIN32)
+    add_test(NAME kaviro_windows_player_smoke COMMAND kaviro_windows_player --smoke-test)
+  endif()
 
   if(KAVIRO_FFMPEG_NATIVE)
     add_executable(kaviro_native_decode_smoke tests/native_decode_smoke.cpp)
