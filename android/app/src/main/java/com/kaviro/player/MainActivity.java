@@ -44,9 +44,6 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 
 public final class MainActivity extends Activity implements SurfaceHolder.Callback {
-    static {
-        System.loadLibrary("kaviro_android");
-    }
 
     private volatile long nativePlayer;
     private TextView statusView;
@@ -142,8 +139,22 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // Keep native loading failures visible instead of allowing Android to
+        // terminate the Activity during class initialization with no UI.
+        try {
+            System.loadLibrary("kaviro_android");
+            nativePlayer = nativeCreate();
+            if (nativePlayer == 0) {
+                showStartupFailure("The native playback engine did not create a player handle.");
+                return;
+            }
+        } catch (UnsatisfiedLinkError | RuntimeException error) {
+            showStartupFailure(error.getClass().getSimpleName() + ": " +
+                    (error.getMessage() == null ? "No details supplied by Android." : error.getMessage()));
+            return;
+        }
+
         cleanupStaleMediaCacheFiles();
-        nativePlayer = nativeCreate();
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         libraryPrefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         audioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
@@ -312,6 +323,17 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         playbackHandler.post(timelineTask);
     }
 
+
+    private void showStartupFailure(String details) {
+        TextView message = new TextView(this);
+        message.setText("KAVIRO Player could not start.\\n\\nStartup diagnostic:\\n" + details +
+                "\\n\\nPlease send a screenshot of this message to the developer.");
+        message.setTextSize(16);
+        message.setPadding(32, 32, 32, 32);
+        message.setTextIsSelectable(true);
+        setContentView(message);
+        android.util.Log.e("KAVIRO-Startup", details);
+    }
 
     private void refreshPlaybackUi() {
         updatePlaybackControls();
