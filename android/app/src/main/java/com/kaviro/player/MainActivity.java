@@ -326,8 +326,8 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
 
     private void showStartupFailure(String details) {
         TextView message = new TextView(this);
-        message.setText("KAVIRO Player could not start.\\n\\nStartup diagnostic:\\n" + details +
-                "\\n\\nPlease send a screenshot of this message to the developer.");
+        message.setText("KAVIRO Player could not start.\n\nStartup diagnostic:\n" + details +
+                "\n\nPlease send a screenshot of this message to the developer.");
         message.setTextSize(16);
         message.setPadding(32, 32, 32, 32);
         message.setTextIsSelectable(true);
