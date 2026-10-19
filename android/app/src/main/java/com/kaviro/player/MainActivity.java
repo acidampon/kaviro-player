@@ -148,7 +148,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                 showStartupFailure("The native playback engine did not create a player handle.");
                 return;
             }
-        } catch (UnsatisfiedLinkError | RuntimeException error) {
+        } catch (LinkageError | RuntimeException error) {
             showStartupFailure(error.getClass().getSimpleName() + ": " +
                     (error.getMessage() == null ? "No details supplied by Android." : error.getMessage()));
             return;
