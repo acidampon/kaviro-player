@@ -1,45 +1,74 @@
 cmake_minimum_required(VERSION 3.24)
-project(KAVIROPlayer VERSION 0.7.0 LANGUAGES CXX)
-
+project(KAVIROPlayer VERSION 0.7.3 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(UMP_BUILD_TESTS "Build core tests" ON)
+option(KAVIRO_FFMPEG_NATIVE "Build against native FFmpeg development libraries" OFF)
 
 add_library(ump_core STATIC
-    core/src/MediaItem.cpp
-    core/src/MediaLibrary.cpp
-    core/src/LibraryView.cpp
-    core/src/LibraryRootsStore.cpp
-    core/src/LibraryCatalog.cpp
-    core/src/LibraryDashboard.cpp
-    core/src/PlaybackState.cpp
-    core/src/MediaProbe.cpp
-    core/src/PlaybackEngine.cpp
-    core/src/MediaEngineFactory.cpp
-    core/src/PlaybackController.cpp
-    core/src/PlaybackStore.cpp
-    core/src/Playlist.cpp
-    core/src/MediaQueue.cpp
-    core/src/HistoryStore.cpp
-    core/src/PlayerSession.cpp
-    core/src/PlaylistStore.cpp
-    core/src/SettingsStore.cpp
+  core/src/KaviroCore.cpp
+  core/src/FfmpegMediaSession.cpp
+  core/src/native/NativeMediaEngine.cpp
+  core/src/native/NativeMediaEnginePackage.cpp
+  core/src/native/ReleaseGate.cpp
+  platform/common/PLATFORM_SERVICES_FACTORY.cpp
+  platform/android/AndroidPlatformServices.cpp
+  platform/windows/WindowsPlatformServices.cpp
 )
-
-target_include_directories(ump_core PUBLIC core/include)
-target_compile_features(ump_core PUBLIC cxx_std_20)
-
+target_include_directories(ump_core PUBLIC core/include platform/common platform/android platform/windows)
 find_package(SQLite3 REQUIRED)
 target_link_libraries(ump_core PUBLIC SQLite::SQLite3)
 
+if(KAVIRO_FFMPEG_NATIVE)
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET libavformat libavcodec libavutil libswresample libswscale)
+  target_compile_definitions(ump_core PUBLIC KAVIRO_FFMPEG_NATIVE=1)
+  target_link_libraries(ump_core PUBLIC PkgConfig::FFMPEG)
+endif()
+
 add_executable(kaviro_player app/main.cpp)
 target_link_libraries(kaviro_player PRIVATE ump_core)
+
+if(WIN32)
+  add_executable(kaviro_windows_player WIN32 app/windows_main.cpp)
+  target_link_libraries(kaviro_windows_player PRIVATE
+    ump_core
+    mfplay
+    mfplat
+    mfuuid
+    shlwapi
+    comdlg32
+    comctl32
+    ole32
+  )
+endif()
 
 if(UMP_BUILD_TESTS)
   enable_testing()
   add_executable(kaviro_core_tests tests/core_tests.cpp)
   target_link_libraries(kaviro_core_tests PRIVATE ump_core)
   add_test(NAME kaviro_core_tests COMMAND kaviro_core_tests)
+
+  add_executable(kaviro_native_boundary_tests tests/native_tests.cpp)
+  target_link_libraries(kaviro_native_boundary_tests PRIVATE ump_core)
+  add_test(NAME kaviro_native_boundary_tests COMMAND kaviro_native_boundary_tests)
+
+  add_executable(kaviro_native_engine_contract_tests tests/native_engine_contract_tests.cpp)
+  target_link_libraries(kaviro_native_engine_contract_tests PRIVATE ump_core)
+  add_test(NAME kaviro_native_engine_contract_tests COMMAND kaviro_native_engine_contract_tests)
+
+  add_executable(kaviro_playback_clock_tests tests/playback_clock_tests.cpp)
+  target_link_libraries(kaviro_playback_clock_tests PRIVATE ump_core)
+  add_test(NAME kaviro_playback_clock_tests COMMAND kaviro_playback_clock_tests)
+
+  if(WIN32)
+    add_test(NAME kaviro_windows_player_smoke COMMAND kaviro_windows_player --smoke-test)
+  endif()
+
+  if(KAVIRO_FFMPEG_NATIVE)
+    add_executable(kaviro_native_decode_smoke tests/native_decode_smoke.cpp)
+    target_link_libraries(kaviro_native_decode_smoke PRIVATE ump_core)
+  endif()
 endif()
